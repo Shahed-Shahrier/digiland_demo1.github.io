@@ -3,8 +3,11 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
+const repoName = "digiland_demo1.github.io";
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  base: mode === "development" ? "/" : process.env.VITE_BASE_PATH || `/${repoName}/`,
   server: {
     host: "::",
     port: 8080,
