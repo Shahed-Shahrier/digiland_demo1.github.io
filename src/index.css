@@ -1,0 +1,146 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    --background: 150 10% 98%;
+    --foreground: 160 30% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 160 30% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 160 30% 10%;
+
+    --primary: 152 55% 28%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 150 15% 93%;
+    --secondary-foreground: 160 30% 15%;
+
+    --muted: 150 10% 94%;
+    --muted-foreground: 160 10% 45%;
+
+    --accent: 38 92% 50%;
+    --accent-foreground: 0 0% 10%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 150 12% 88%;
+    --input: 150 12% 88%;
+    --ring: 152 55% 28%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 152 40% 18%;
+    --sidebar-foreground: 150 15% 90%;
+    --sidebar-primary: 38 92% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 152 35% 24%;
+    --sidebar-accent-foreground: 150 15% 95%;
+    --sidebar-border: 152 30% 25%;
+    --sidebar-ring: 38 92% 50%;
+
+    /* Custom tokens */
+    --success: 152 55% 35%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 10%;
+    --info: 210 70% 50%;
+    --info-foreground: 0 0% 100%;
+
+    --gradient-hero: linear-gradient(135deg, hsl(152, 55%, 28%), hsl(152, 40%, 18%));
+    --gradient-accent: linear-gradient(135deg, hsl(38, 92%, 50%), hsl(38, 80%, 45%));
+    --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+    --shadow-elevated: 0 10px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.04);
+  }
+
+  .dark {
+    --background: 160 20% 7%;
+    --foreground: 150 10% 92%;
+
+    --card: 160 18% 10%;
+    --card-foreground: 150 10% 92%;
+
+    --popover: 160 18% 10%;
+    --popover-foreground: 150 10% 92%;
+
+    --primary: 152 55% 40%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 160 15% 15%;
+    --secondary-foreground: 150 10% 88%;
+
+    --muted: 160 12% 15%;
+    --muted-foreground: 150 8% 55%;
+
+    --accent: 38 85% 55%;
+    --accent-foreground: 0 0% 10%;
+
+    --destructive: 0 65% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 160 12% 18%;
+    --input: 160 12% 18%;
+    --ring: 152 55% 40%;
+
+    --sidebar-background: 160 20% 6%;
+    --sidebar-foreground: 150 10% 85%;
+    --sidebar-primary: 38 85% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 160 15% 12%;
+    --sidebar-accent-foreground: 150 10% 90%;
+    --sidebar-border: 160 12% 14%;
+    --sidebar-ring: 38 85% 55%;
+
+    --success: 152 50% 40%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 85% 55%;
+    --warning-foreground: 0 0% 10%;
+    --info: 210 65% 55%;
+    --info-foreground: 0 0% 100%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+@layer components {
+  .badge-pending {
+    @apply bg-warning/15 text-accent-foreground border border-accent/30;
+  }
+  .badge-approved {
+    @apply bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] border border-[hsl(var(--success))]/30;
+  }
+  .badge-rejected {
+    @apply bg-destructive/15 text-destructive border border-destructive/30;
+  }
+  .badge-review {
+    @apply bg-[hsl(var(--info))]/15 text-[hsl(var(--info))] border border-[hsl(var(--info))]/30;
+  }
+  .badge-verified {
+    @apply bg-primary/15 text-primary border border-primary/30;
+  }
+  .stat-card {
+    @apply rounded-lg border bg-card p-6 shadow-sm transition-all hover:shadow-md;
+  }
+  .page-header {
+    @apply mb-6 space-y-1;
+  }
+  .page-title {
+    @apply text-2xl font-bold tracking-tight text-foreground;
+  }
+  .page-description {
+    @apply text-muted-foreground;
+  }
+}
