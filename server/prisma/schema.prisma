@@ -130,8 +130,8 @@ enum UserRole {
 
 enum ApplicationStatus {
   Pending
-  "Under Review"
-  "Clarification Requested"
+  Under_Review
+  Clarification_Requested
   Verified
   Approved
   Rejected

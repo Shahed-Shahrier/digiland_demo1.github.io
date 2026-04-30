@@ -33,15 +33,30 @@ app.post('/api/users', async (req, res) => {
 // Applications list
 app.get('/api/applications', async (_req, res) => {
   const apps = await prisma.application.findMany({ include: { documents: true, comments: true, verificationNotes: true } });
-  res.json(apps);
+  // map enum-style statuses to human-readable
+  const mapped = apps.map(a => ({
+    ...a,
+    status: formatStatus(a.status as string),
+    statusHistory: Array.isArray(a.statusHistory) ? a.statusHistory : JSON.parse(a.statusHistory as unknown as string || '[]')
+  }));
+  res.json(mapped);
 });
 
 app.get('/api/applications/:id', async (req, res) => {
   const id = req.params.id;
   const appData = await prisma.application.findUnique({ where: { id }, include: { documents: true, comments: true, verificationNotes: true } });
   if (!appData) return res.status(404).json({ error: 'Not found' });
-  res.json(appData);
+  const mapped = {
+    ...appData,
+    status: formatStatus(appData.status as string),
+    statusHistory: Array.isArray(appData.statusHistory) ? appData.statusHistory : JSON.parse(appData.statusHistory as unknown as string || '[]')
+  };
+  res.json(mapped);
 });
+
+function formatStatus(s: string) {
+  return s.replace(/_/g, ' ');
+}
 
 // Add a notification
 app.post('/api/notifications', async (req, res) => {
