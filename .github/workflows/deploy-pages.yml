@@ -21,6 +21,7 @@ jobs:
     env:
       VITE_BASE_PATH: /digiland_demo1.github.io/
       VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
       VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
     steps:
       - name: Checkout
@@ -38,7 +39,7 @@ jobs:
       - name: Validate Supabase configuration
         run: |
           test -n "$VITE_SUPABASE_URL"
-          test -n "$VITE_SUPABASE_ANON_KEY"
+          test -n "$VITE_SUPABASE_PUBLISHABLE_KEY$VITE_SUPABASE_ANON_KEY"
 
       - name: Build
         run: npm run build

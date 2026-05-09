@@ -16,8 +16,14 @@ export default function NotificationsPage() {
 
   const notifs = getNotificationsForUser(user.id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const handleMarkAll = () => { markAllNotificationsRead(user.id); setRefresh(r => r + 1); };
-  const handleMark = (id: string) => { markNotificationRead(id); setRefresh(r => r + 1); };
+  const handleMarkAll = async () => {
+    await markAllNotificationsRead(user.id);
+    setRefresh(r => r + 1);
+  };
+  const handleMark = async (id: string) => {
+    await markNotificationRead(id);
+    setRefresh(r => r + 1);
+  };
 
   return (
     <DashboardLayout>

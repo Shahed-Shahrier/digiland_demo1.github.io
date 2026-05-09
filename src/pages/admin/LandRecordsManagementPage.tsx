@@ -21,16 +21,27 @@ export default function LandRecordsManagementPage() {
 
   const records = getLandRecords().filter(r => r.plotNumber.toLowerCase().includes(query.toLowerCase()) || r.ownerName.toLowerCase().includes(query.toLowerCase()));
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     const rec: LandRecord = { id: generateId('LR'), ...form, ownershipStatus: 'Active' };
-    addLandRecord(rec);
-    toast({ title: 'Record Added' });
-    setForm({ ownerName: '', plotNumber: '', holdingNumber: '', district: '', upazila: '', mouza: '', landSize: '' });
-    setOpen(false);
-    setRefresh(r => r + 1);
+    try {
+      await addLandRecord(rec);
+      toast({ title: 'Record Added' });
+      setForm({ ownerName: '', plotNumber: '', holdingNumber: '', district: '', upazila: '', mouza: '', landSize: '' });
+      setOpen(false);
+      setRefresh(r => r + 1);
+    } catch (error) {
+      toast({ title: 'Record Add Failed', description: error instanceof Error ? error.message : 'Could not add record', variant: 'destructive' });
+    }
   };
 
-  const handleDelete = (id: string) => { deleteLandRecord(id); setRefresh(r => r + 1); };
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteLandRecord(id);
+      setRefresh(r => r + 1);
+    } catch (error) {
+      toast({ title: 'Record Delete Failed', description: error instanceof Error ? error.message : 'Could not delete record', variant: 'destructive' });
+    }
+  };
 
   return (
     <DashboardLayout>

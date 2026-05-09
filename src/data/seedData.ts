@@ -239,13 +239,5 @@ export const mockAuditLogs: AuditLog[] = [
   { id: 'log-8', timestamp: '2024-09-01T10:05:00Z', actorName: 'Fatema Begum', actorRole: 'citizen', actionType: 'Application Created', applicationId: 'APP-2024-004', details: 'Mutation application submitted for plot CT-3456' },
 ];
 
-export function initializeSeedData() {
-  if (!localStorage.getItem('digiland_initialized')) {
-    localStorage.setItem('digiland_users', JSON.stringify(demoUsers));
-    localStorage.setItem('digiland_land_records', JSON.stringify(mockLandRecords));
-    localStorage.setItem('digiland_applications', JSON.stringify(mockApplications));
-    localStorage.setItem('digiland_notifications', JSON.stringify(mockNotifications));
-    localStorage.setItem('digiland_audit_logs', JSON.stringify(mockAuditLogs));
-    localStorage.setItem('digiland_initialized', 'true');
-  }
-}
+// Demo fixtures are retained for documentation and tests only.
+// Runtime data access is Supabase-backed in src/services/storageService.ts.

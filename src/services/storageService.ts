@@ -1,207 +1,806 @@
-import { User, LandRecord, Application, Notification, AuditLog, ApplicationStatus, ReviewComment, VerificationNote } from '@/types';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { demoUsers, mockApplications, mockAuditLogs, mockLandRecords, mockNotifications } from '@/data/seedData';
+import { supabase } from '@/integrations/supabase/client';
+import {
+  AuditLog,
+  Application,
+  ApplicationStatus,
+  LandRecord,
+  Notification,
+  ReviewComment,
+  TransferType,
+  User,
+  UserRole,
+  VerificationNote,
+} from '@/types';
+import {
+  DbApplication,
+  DbAuditLog,
+  DbDocument,
+  DbLandParcel,
+  DbNotification,
+  DbReview,
+  DbRole,
+  DbStatusHistory,
+  DbUser,
+  DbUserRole,
+  DbVerification,
+} from '@/integrations/supabase/types';
 
-type Entity = User | LandRecord | Application | Notification | AuditLog;
-
-type StoreConfig<T extends Entity> = {
-  key: string;
-  table: string;
-  seed: T[];
+type Cache = {
+  users: User[];
+  landRecords: LandRecord[];
+  applications: Application[];
+  notifications: Notification[];
+  auditLogs: AuditLog[];
 };
 
-type SupabaseRow<T> = {
-  id: string;
-  data: T;
+const cache: Cache = {
+  users: [],
+  landRecords: [],
+  applications: [],
+  notifications: [],
+  auditLogs: [],
 };
 
-const stores = {
-  users: { key: 'digiland_users', table: 'digiland_users', seed: demoUsers },
-  landRecords: { key: 'digiland_land_records', table: 'digiland_land_records', seed: mockLandRecords },
-  applications: { key: 'digiland_applications', table: 'digiland_applications', seed: mockApplications },
-  notifications: { key: 'digiland_notifications', table: 'digiland_notifications', seed: mockNotifications },
-  auditLogs: { key: 'digiland_audit_logs', table: 'digiland_audit_logs', seed: mockAuditLogs },
-} satisfies Record<string, StoreConfig<Entity>>;
+let initialized = false;
 
-function readLocal<T>(key: string): T[] {
-  return JSON.parse(localStorage.getItem(key) || '[]') as T[];
-}
-
-function writeLocal<T>(key: string, rows: T[]) {
-  localStorage.setItem(key, JSON.stringify(rows));
-}
-
-function seedLocalIfEmpty<T extends Entity>(config: StoreConfig<T>) {
-  if (!localStorage.getItem(config.key)) {
-    writeLocal(config.key, config.seed);
+function unwrap<T>(result: { data: T | null; error: { message: string } | null }, context: string): T {
+  if (result.error) {
+    throw new Error(`${context}: ${result.error.message}`);
   }
+  return result.data as T;
 }
 
-async function loadRemote<T extends Entity>(config: StoreConfig<T>) {
-  if (!supabase) return;
-
-  const { data, error } = await supabase
-    .from(config.table)
-    .select('id,data')
-    .order('updated_at', { ascending: false });
-
-  if (error) throw error;
-
-  const rows = ((data || []) as SupabaseRow<T>[]).map(row => row.data);
-  if (rows.length === 0 && config.seed.length > 0) {
-    await upsertMany(config, config.seed);
-    writeLocal(config.key, config.seed);
-    return;
-  }
-
-  writeLocal(config.key, rows);
+function normalizeRole(role?: string | null): UserRole {
+  const value = (role || 'citizen').toLowerCase().replace(/[\s-]+/g, '_');
+  if (value === 'land_officer' || value === 'survey_officer' || value === 'admin') return value;
+  return 'citizen';
 }
 
-async function upsertMany<T extends Entity>(config: StoreConfig<T>, rows: T[]) {
-  if (!supabase || rows.length === 0) return;
-
-  const { error } = await supabase
-    .from(config.table)
-    .upsert(rows.map(row => ({ id: row.id, data: row })));
-
-  if (error) throw error;
+function roleToDbName(role: UserRole) {
+  return role.replace(/_/g, ' ');
 }
 
-function persist<T extends Entity>(config: StoreConfig<T>, rows: T[]) {
-  writeLocal(config.key, rows);
-  if (isSupabaseConfigured) {
-    void upsertMany(config, rows).catch(error => console.error(`Supabase sync failed for ${config.table}`, error));
-  }
+function statusFromDb(status?: string | null): ApplicationStatus {
+  const value = (status || 'Pending').toLowerCase().replace(/_/g, ' ');
+  if (value === 'under review') return 'Under Review';
+  if (value === 'clarification requested') return 'Clarification Requested';
+  if (value === 'verified') return 'Verified';
+  if (value === 'approved') return 'Approved';
+  if (value === 'rejected') return 'Rejected';
+  return 'Pending';
 }
 
-function removeRemote(config: StoreConfig<Entity>, id: string) {
-  if (!supabase) return;
-  void supabase.from(config.table).delete().eq('id', id).then(({ error }) => {
-    if (error) console.error(`Supabase delete failed for ${config.table}`, error);
-  });
+function statusToDb(status: ApplicationStatus) {
+  return status.toLowerCase().replace(/ /g, '_');
+}
+
+function transferToDb(type: TransferType) {
+  return type.toLowerCase().replace(/ /g, '_');
+}
+
+function transferFromDb(type?: string | null): TransferType {
+  const value = (type || 'Sale').toLowerCase();
+  if (value.includes('inheritance')) return 'Inheritance';
+  if (value.includes('gift')) return 'Gift';
+  if (value.includes('court')) return 'Court Order';
+  if (value.includes('government')) return 'Government Acquisition';
+  return 'Sale';
+}
+
+function numericId(id: string | number | undefined | null) {
+  const parsed = Number(String(id || '').replace(/\D/g, ''));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function mapUser(row: DbUser, role?: string | null): User {
+  return {
+    id: String(row.user_id),
+    name: row.full_name,
+    email: row.email,
+    role: normalizeRole(role),
+    phone: row.phone || undefined,
+    nid: row.nid_number || undefined,
+    createdAt: row.created_at,
+  };
+}
+
+function mapLandRecord(row: DbLandParcel, ownerName = 'Unknown owner'): LandRecord {
+  return {
+    id: String(row.land_id),
+    ownerName,
+    plotNumber: row.plot_number,
+    holdingNumber: row.holding_number || row.khatian_number || '',
+    district: row.district || '',
+    upazila: row.upazila || '',
+    mouza: row.mouza || '',
+    landSize: row.area_size == null ? '' : String(row.area_size),
+    ownershipStatus: mapOwnership(row.ownership_status || row.current_status),
+  };
+}
+
+function mapOwnership(status?: string | null): LandRecord['ownershipStatus'] {
+  const value = (status || 'Active').toLowerCase();
+  if (value.includes('disput')) return 'Disputed';
+  if (value.includes('transfer')) return 'Transferred';
+  if (value.includes('gov')) return 'Government';
+  return 'Active';
+}
+
+function mapDocument(row: DbDocument) {
+  return {
+    id: String(row.document_id),
+    name: row.file_name,
+    type: row.mime_type || 'application/octet-stream',
+    size: Number(row.file_size || 0),
+    documentType: mapDocumentType(row.document_type),
+    uploadedAt: row.uploaded_at,
+  };
+}
+
+function mapDocumentType(type?: string | null): Application['documents'][number]['documentType'] {
+  const value = (type || '').toLowerCase();
+  if (value.includes('nid') || value.includes('national')) return 'National ID';
+  if (value.includes('tax')) return 'Tax Receipt';
+  if (value.includes('support')) return 'Supporting Document';
+  return 'Land Deed';
+}
+
+function mapReview(row: DbReview, usersById: Map<string, User>): ReviewComment {
+  const author = usersById.get(String(row.reviewer_id));
+  return {
+    id: String(row.review_id),
+    applicationId: String(row.application_id),
+    authorId: String(row.reviewer_id),
+    authorName: author?.name || `User ${row.reviewer_id}`,
+    authorRole: author?.role || 'land_officer',
+    comment: row.note,
+    createdAt: row.created_at,
+  };
+}
+
+function mapVerification(row: DbVerification, usersById: Map<string, User>): VerificationNote {
+  const officer = usersById.get(String(row.survey_officer_id));
+  return {
+    id: String(row.verification_id),
+    applicationId: String(row.application_id),
+    officerId: String(row.survey_officer_id),
+    officerName: officer?.name || `User ${row.survey_officer_id}`,
+    findings: row.notes || '',
+    isVerified: row.result ? !String(row.result).toLowerCase().includes('reject') : Boolean(row.geo_verified),
+    createdAt: row.created_at,
+  };
+}
+
+function mapNotification(row: DbNotification): Notification {
+  const applicationId = row.deep_link?.match(/applications\/([^/?#]+)/)?.[1];
+  return {
+    id: String(row.notification_id),
+    userId: String(row.recipient_user_id),
+    title: row.title,
+    message: row.message,
+    type: mapNotificationType(row.type),
+    read: row.is_read,
+    applicationId,
+    createdAt: row.created_at,
+  };
+}
+
+function mapNotificationType(type?: string | null): Notification['type'] {
+  const value = (type || '').toLowerCase();
+  if (value.includes('success')) return 'success';
+  if (value.includes('warn')) return 'warning';
+  if (value.includes('error') || value.includes('reject')) return 'error';
+  return 'info';
+}
+
+function mapAuditLog(row: DbAuditLog, usersById: Map<string, User>): AuditLog {
+  const actor = row.actor_user_id ? usersById.get(String(row.actor_user_id)) : undefined;
+  const newValues = row.new_values && typeof row.new_values === 'object' ? row.new_values : undefined;
+  const applicationId = typeof newValues === 'object' && newValues && 'application_number' in newValues
+    ? String(newValues.application_number)
+    : row.target_table === 'applications' && row.target_id
+      ? String(row.target_id)
+      : undefined;
+
+  return {
+    id: String(row.log_id),
+    timestamp: row.created_at,
+    actorName: actor?.name || (row.actor_user_id ? `User ${row.actor_user_id}` : 'System'),
+    actorRole: actor?.role || 'admin',
+    actionType: row.action_type,
+    applicationId,
+    details: `${row.action_type}${row.target_table ? ` on ${row.target_table}` : ''}${row.target_id ? ` #${row.target_id}` : ''}`,
+  };
+}
+
+function mapApplication(
+  row: DbApplication,
+  usersById: Map<string, User>,
+  landById: Map<string, LandRecord>,
+  documents: DbDocument[],
+  reviews: DbReview[],
+  verifications: DbVerification[],
+  historyRows: DbStatusHistory[],
+): Application {
+  const applicant = usersById.get(String(row.applicant_user_id));
+  const land = landById.get(String(row.land_id));
+  const statusHistory = historyRows
+    .filter(h => String(h.application_id) === String(row.application_id))
+    .map(h => ({
+      status: statusFromDb(h.status),
+      timestamp: h.created_at,
+      actor: h.changed_by ? usersById.get(String(h.changed_by))?.name || `User ${h.changed_by}` : 'System',
+    }));
+
+  return {
+    id: row.application_number || String(row.application_id),
+    applicantId: String(row.applicant_user_id),
+    applicantName: applicant?.name || `User ${row.applicant_user_id}`,
+    applicantNid: applicant?.nid || '',
+    applicantPhone: applicant?.phone || '',
+    applicantEmail: applicant?.email || '',
+    applicantAddress: '',
+    plotNumber: land?.plotNumber || '',
+    holdingNumber: land?.holdingNumber || '',
+    district: land?.district || '',
+    upazila: land?.upazila || '',
+    mouza: land?.mouza || '',
+    landSize: land?.landSize || '',
+    currentOwner: land?.ownerName || '',
+    proposedNewOwner: '',
+    transferType: transferFromDb(row.transfer_type),
+    reason: row.cancellation_reason || row.rejection_reason || '',
+    deedReference: '',
+    remarks: row.rejection_reason || row.cancellation_reason || '',
+    documents: documents.filter(d => String(d.application_id) === String(row.application_id)).map(mapDocument),
+    status: statusFromDb(row.current_status),
+    assignedSurveyOfficerId: row.assigned_survey_officer_id ? String(row.assigned_survey_officer_id) : undefined,
+    comments: reviews.filter(r => String(r.application_id) === String(row.application_id)).map(r => mapReview(r, usersById)),
+    verificationNotes: verifications.filter(v => String(v.application_id) === String(row.application_id)).map(v => mapVerification(v, usersById)),
+    statusHistory: statusHistory.length > 0 ? statusHistory : [{ status: statusFromDb(row.current_status), timestamp: row.created_at, actor: 'System' }],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at || row.created_at,
+  };
+}
+
+async function selectAll<T>(table: string, orderColumn?: string) {
+  let query = supabase.from(table).select('*');
+  if (orderColumn) query = query.order(orderColumn, { ascending: false });
+  return unwrap<T[]>(await query, `Load ${table}`);
+}
+
+async function loadUsers() {
+  const [users, roles, userRoles] = await Promise.all([
+    selectAll<DbUser>('users', 'created_at'),
+    selectAll<DbRole>('roles'),
+    selectAll<DbUserRole>('user_roles'),
+  ]);
+
+  const rolesById = new Map(roles.map(role => [String(role.role_id), role.role_name]));
+  const roleByUserId = new Map(userRoles.map(row => [String(row.user_id), rolesById.get(String(row.role_id))]));
+  cache.users = users.filter(row => !row.deleted_at).map(row => mapUser(row, roleByUserId.get(String(row.user_id))));
+  return cache.users;
+}
+
+async function loadLandRecords() {
+  const parcels = await selectAll<DbLandParcel>('land_parcels', 'created_at');
+  cache.landRecords = parcels.map(parcel => mapLandRecord(parcel));
+  return cache.landRecords;
+}
+
+async function loadApplications() {
+  const [applications, documents, reviews, verifications, history] = await Promise.all([
+    selectAll<DbApplication>('applications', 'created_at'),
+    selectAll<DbDocument>('documents', 'uploaded_at'),
+    selectAll<DbReview>('reviews', 'created_at'),
+    selectAll<DbVerification>('verifications', 'created_at'),
+    selectAll<DbStatusHistory>('application_status_history', 'created_at'),
+  ]);
+  const usersById = new Map(cache.users.map(user => [user.id, user]));
+  const landById = new Map(cache.landRecords.map(land => [land.id, land]));
+  cache.applications = applications.map(app => mapApplication(app, usersById, landById, documents, reviews, verifications, history));
+  return cache.applications;
+}
+
+async function loadNotifications() {
+  cache.notifications = (await selectAll<DbNotification>('notifications', 'created_at')).map(mapNotification);
+  return cache.notifications;
+}
+
+async function loadAuditLogs() {
+  const usersById = new Map(cache.users.map(user => [user.id, user]));
+  cache.auditLogs = (await selectAll<DbAuditLog>('audit_logs', 'created_at')).map(row => mapAuditLog(row, usersById));
+  return cache.auditLogs;
 }
 
 export async function initializeAppData() {
-  if (!isSupabaseConfigured) {
-    Object.values(stores).forEach(seedLocalIfEmpty);
-    localStorage.setItem('digiland_initialized', 'true');
-    return;
+  await loadUsers();
+  await loadLandRecords();
+  await Promise.all([loadApplications(), loadNotifications(), loadAuditLogs()]);
+  initialized = true;
+}
+
+export async function refreshAppData() {
+  return initializeAppData();
+}
+
+export function isAppDataInitialized() {
+  return initialized;
+}
+
+export async function getUserProfileByEmail(email: string) {
+  const result = await supabase
+    .from('users')
+    .select('*')
+    .eq('email', email)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  const row = unwrap<DbUser | null>(result, 'Load user profile');
+  if (!row) return null;
+
+  const { data: roleRows, error } = await supabase
+    .from('user_roles')
+    .select('roles(role_name)')
+    .eq('user_id', row.user_id);
+
+  if (error) throw new Error(`Load user role: ${error.message}`);
+
+  const roleRecord = Array.isArray(roleRows) ? (roleRows[0] as { roles?: { role_name?: string } | Array<{ role_name?: string }> } | undefined)?.roles : undefined;
+  const roleName = roleRecord
+    ? (Array.isArray(roleRecord) ? roleRecord[0]?.role_name : roleRecord.role_name)
+    : undefined;
+
+  return mapUser(row, roleName);
+}
+
+export async function getUserProfileByAuthId(authUserId: string, email?: string) {
+  const byAuthId = await supabase
+    .from('users')
+    .select('*')
+    .eq('auth_user_id', authUserId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (!byAuthId.error && byAuthId.data) {
+    const row = byAuthId.data as DbUser;
+    return getUserProfileByEmail(row.email);
   }
 
-  try {
-    await Promise.all(Object.values(stores).map(loadRemote));
-    localStorage.setItem('digiland_initialized', 'true');
-  } catch (error) {
-    console.error('Could not load Supabase data. Using cached browser data until the next refresh.', error);
-    Object.values(stores).forEach(seedLocalIfEmpty);
+  if (email) return getUserProfileByEmail(email);
+  if (byAuthId.error) throw new Error(`Load user profile by auth id: ${byAuthId.error.message}`);
+  return null;
+}
+
+export async function createUserProfile(input: {
+  name: string;
+  email: string;
+  authUserId?: string;
+  role: UserRole;
+  phone?: string;
+  nid?: string;
+  address?: string;
+}) {
+  const inserted = unwrap<DbUser>(
+    await supabase
+      .from('users')
+      .insert({
+        auth_user_id: input.authUserId || null,
+        full_name: input.name,
+        email: input.email,
+        phone: input.phone || null,
+        nid_number: input.nid || null,
+        status: 'active',
+      })
+      .select()
+      .single(),
+    'Create user profile',
+  );
+
+  const roleRow = unwrap<DbRole | null>(
+    await supabase
+      .from('roles')
+      .select('*')
+      .ilike('role_name', roleToDbName(input.role))
+      .maybeSingle(),
+    'Load role',
+  );
+
+  if (roleRow) {
+    unwrap(
+      await supabase.from('user_roles').insert({ user_id: inserted.user_id, role_id: roleRow.role_id }),
+      'Assign role',
+    );
   }
+
+  const profile = mapUser(inserted, roleRow?.role_name || input.role);
+  cache.users = [profile, ...cache.users.filter(user => user.id !== profile.id)];
+  return profile;
 }
 
 // Users
-export const getUsers = () => readLocal<User>(stores.users.key);
+export const getUsers = () => cache.users;
 
 export const getUserById = (id: string) => getUsers().find(u => u.id === id) || null;
 
-export const addUser = (user: User) => {
-  const users = [...getUsers(), user];
-  persist(stores.users, users);
-  return user;
+export const addUser = createUserProfile;
+
+export const updateUser = async (id: string, updates: Partial<User>) => {
+  const userId = numericId(id);
+  if (!userId) throw new Error(`Update user: invalid user id ${id}`);
+
+  const updated = unwrap<DbUser>(
+    await supabase
+      .from('users')
+      .update({
+        full_name: updates.name,
+        phone: updates.phone,
+        nid_number: updates.nid,
+      })
+      .eq('user_id', userId)
+      .select()
+      .single(),
+    'Update user',
+  );
+
+  const role = cache.users.find(user => user.id === id)?.role;
+  const mapped = mapUser(updated, role);
+  cache.users = cache.users.map(user => user.id === id ? mapped : user);
+  return mapped;
 };
 
-export const deleteUser = (id: string) => {
-  persist(stores.users, getUsers().filter(u => u.id !== id));
-  removeRemote(stores.users, id);
+export const deleteUser = async (id: string) => {
+  const userId = numericId(id);
+  if (!userId) throw new Error(`Delete user: invalid user id ${id}`);
+
+  unwrap(
+    await supabase
+      .from('users')
+      .update({ status: 'deleted', deleted_at: new Date().toISOString() })
+      .eq('user_id', userId),
+    'Soft delete user',
+  );
+  cache.users = cache.users.filter(user => user.id !== id);
 };
 
 // Land Records
-export const getLandRecords = () => readLocal<LandRecord>(stores.landRecords.key);
+export const getLandRecords = () => cache.landRecords;
 
-export const addLandRecord = (record: LandRecord) => {
-  persist(stores.landRecords, [...getLandRecords(), record]);
-  return record;
+export const addLandRecord = async (record: LandRecord) => {
+  const inserted = unwrap<DbLandParcel>(
+    await supabase
+      .from('land_parcels')
+      .insert({
+        plot_number: record.plotNumber,
+        holding_number: record.holdingNumber || null,
+        mouza: record.mouza || null,
+        district: record.district || null,
+        upazila: record.upazila || null,
+        area_size: record.landSize || null,
+        ownership_status: record.ownershipStatus.toLowerCase(),
+        current_status: 'active',
+      })
+      .select()
+      .single(),
+    'Create land parcel',
+  );
+
+  const mapped = mapLandRecord(inserted, record.ownerName);
+  cache.landRecords = [mapped, ...cache.landRecords];
+  return mapped;
 };
 
-export const updateLandRecord = (id: string, updates: Partial<LandRecord>) => {
-  const records = getLandRecords().map(r => r.id === id ? { ...r, ...updates } : r);
-  persist(stores.landRecords, records);
-  return records.find(r => r.id === id);
+export const updateLandRecord = async (id: string, updates: Partial<LandRecord>) => {
+  const landId = numericId(id);
+  if (!landId) throw new Error(`Update land record: invalid land id ${id}`);
+
+  const updated = unwrap<DbLandParcel>(
+    await supabase
+      .from('land_parcels')
+      .update({
+        plot_number: updates.plotNumber,
+        holding_number: updates.holdingNumber,
+        mouza: updates.mouza,
+        district: updates.district,
+        upazila: updates.upazila,
+        area_size: updates.landSize,
+        ownership_status: updates.ownershipStatus?.toLowerCase(),
+      })
+      .eq('land_id', landId)
+      .select()
+      .single(),
+    'Update land parcel',
+  );
+
+  const ownerName = cache.landRecords.find(record => record.id === id)?.ownerName;
+  const mapped = mapLandRecord(updated, ownerName);
+  cache.landRecords = cache.landRecords.map(record => record.id === id ? mapped : record);
+  return mapped;
 };
 
-export const deleteLandRecord = (id: string) => {
-  persist(stores.landRecords, getLandRecords().filter(r => r.id !== id));
-  removeRemote(stores.landRecords, id);
+export const deleteLandRecord = async (id: string) => {
+  const landId = numericId(id);
+  if (!landId) throw new Error(`Delete land record: invalid land id ${id}`);
+
+  unwrap(
+    await supabase
+      .from('land_parcels')
+      .update({ current_status: 'archived' })
+      .eq('land_id', landId),
+    'Archive land parcel',
+  );
+  cache.landRecords = cache.landRecords.filter(record => record.id !== id);
 };
 
 // Applications
-export const getApplications = () => readLocal<Application>(stores.applications.key);
+export const getApplications = () => cache.applications;
 
 export const getApplicationById = (id: string) => getApplications().find(a => a.id === id);
 
-export const addApplication = (app: Application) => {
-  persist(stores.applications, [...getApplications(), app]);
+export const addApplication = async (app: Application) => {
+  const applicantId = numericId(app.applicantId);
+  if (!applicantId) throw new Error(`Create application: invalid applicant id ${app.applicantId}`);
+
+  const matchingLand = cache.landRecords.find(record => record.plotNumber === app.plotNumber && record.holdingNumber === app.holdingNumber);
+  let landId = numericId(matchingLand?.id);
+
+  if (!landId) {
+    const land = await addLandRecord({
+      id: '',
+      ownerName: app.currentOwner,
+      plotNumber: app.plotNumber,
+      holdingNumber: app.holdingNumber,
+      district: app.district,
+      upazila: app.upazila,
+      mouza: app.mouza,
+      landSize: app.landSize,
+      ownershipStatus: 'Active',
+    });
+    landId = numericId(land.id);
+  }
+
+  if (!landId) throw new Error('Create application: could not resolve land parcel id');
+
+  const inserted = unwrap<DbApplication>(
+    await supabase
+      .from('applications')
+      .insert({
+        application_number: app.id,
+        applicant_user_id: applicantId,
+        land_id: landId,
+        transfer_type: transferToDb(app.transferType),
+        fee_amount: 0,
+        payment_status: 'unpaid',
+        current_status: statusToDb(app.status),
+        submitted_at: app.createdAt,
+      })
+      .select()
+      .single(),
+    'Create application',
+  );
+
+  for (const document of app.documents) {
+    unwrap(
+      await supabase.from('documents').insert({
+        application_id: inserted.application_id,
+        user_id: applicantId,
+        land_id: landId,
+        document_type: document.documentType.toLowerCase().replace(/ /g, '_'),
+        file_name: document.name,
+        file_path: document.name,
+        mime_type: document.type,
+        file_size: document.size,
+        version_no: 1,
+        verification_status: 'pending',
+        uploaded_at: document.uploadedAt,
+      }),
+      'Create document metadata',
+    );
+  }
+
+  cache.applications = [app, ...cache.applications.filter(existing => existing.id !== app.id)];
   return app;
 };
 
-export const updateApplication = (id: string, updates: Partial<Application>) => {
-  const apps = getApplications().map(a => a.id === id ? { ...a, ...updates } : a);
-  persist(stores.applications, apps);
-  return apps.find(a => a.id === id);
+export const updateApplication = async (id: string, updates: Partial<Application>) => {
+  const current = getApplicationById(id);
+  if (!current) throw new Error(`Update application: application ${id} is not loaded`);
+
+  const dbId = numericId(id) || numericId(current.id);
+  if (!dbId && current.id.startsWith('APP-')) {
+    const found = unwrap<DbApplication | null>(
+      await supabase.from('applications').select('*').eq('application_number', current.id).maybeSingle(),
+      'Find application',
+    );
+    if (!found) throw new Error(`Update application: could not find ${id}`);
+    return updateApplication(String(found.application_id), updates);
+  }
+
+  if (!dbId) throw new Error(`Update application: invalid application id ${id}`);
+
+  const updated = { ...current, ...updates, updatedAt: new Date().toISOString() };
+  unwrap(
+    await supabase
+      .from('applications')
+      .update({
+        current_status: updates.status ? statusToDb(updates.status) : undefined,
+        assigned_survey_officer_id: numericId(updates.assignedSurveyOfficerId),
+        updated_at: updated.updatedAt,
+      })
+      .eq('application_id', dbId),
+    'Update application',
+  );
+
+  cache.applications = cache.applications.map(app => app.id === current.id ? updated : app);
+  return updated;
 };
 
-export const changeApplicationStatus = (id: string, status: ApplicationStatus, actor: string) => {
+export const changeApplicationStatus = async (id: string, status: ApplicationStatus, actor: string) => {
   const app = getApplicationById(id);
-  if (!app) return;
+  if (!app) throw new Error(`Change status: application ${id} is not loaded`);
+
+  const actorUser = cache.users.find(user => user.name === actor);
+  const dbApplication = unwrap<DbApplication | null>(
+    await supabase.from('applications').select('*').eq('application_number', app.id).maybeSingle(),
+    'Find application for status change',
+  );
+
+  if (!dbApplication) throw new Error(`Change status: could not find application ${app.id}`);
+
+  unwrap(
+    await supabase.from('application_status_history').insert({
+      application_id: dbApplication.application_id,
+      status: statusToDb(status),
+      changed_by: numericId(actorUser?.id),
+      created_at: new Date().toISOString(),
+    }),
+    'Insert application status history',
+  );
 
   const history = [...app.statusHistory, { status, timestamp: new Date().toISOString(), actor }];
-  return updateApplication(id, { status, statusHistory: history, updatedAt: new Date().toISOString() });
+  return updateApplication(app.id, { status, statusHistory: history, updatedAt: new Date().toISOString() });
 };
 
-export const addComment = (applicationId: string, comment: ReviewComment) => {
-  const app = getApplicationById(applicationId);
-  if (!app) return;
+export const addComment = async (applicationId: string, comment: ReviewComment) => {
+  const dbApplication = unwrap<DbApplication | null>(
+    await supabase.from('applications').select('*').eq('application_number', applicationId).maybeSingle(),
+    'Find application for review',
+  );
+  if (!dbApplication) throw new Error(`Add review: could not find application ${applicationId}`);
 
-  return updateApplication(applicationId, {
-    comments: [...app.comments, comment],
-    updatedAt: new Date().toISOString(),
-  });
+  const reviewerId = numericId(comment.authorId);
+  if (!reviewerId) throw new Error(`Add review: invalid reviewer id ${comment.authorId}`);
+
+  const inserted = unwrap<DbReview>(
+    await supabase
+      .from('reviews')
+      .insert({
+        application_id: dbApplication.application_id,
+        reviewer_id: reviewerId,
+        note: comment.comment,
+        review_type: 'comment',
+      })
+      .select()
+      .single(),
+    'Insert review',
+  );
+
+  const app = getApplicationById(applicationId);
+  if (app) {
+    const mapped = mapReview(inserted, new Map(cache.users.map(user => [user.id, user])));
+    cache.applications = cache.applications.map(item => item.id === app.id ? { ...item, comments: [...item.comments, mapped] } : item);
+  }
 };
 
-export const addVerificationNote = (applicationId: string, note: VerificationNote) => {
-  const app = getApplicationById(applicationId);
-  if (!app) return;
+export const addVerificationNote = async (applicationId: string, note: VerificationNote) => {
+  const dbApplication = unwrap<DbApplication | null>(
+    await supabase.from('applications').select('*').eq('application_number', applicationId).maybeSingle(),
+    'Find application for verification',
+  );
+  if (!dbApplication) throw new Error(`Add verification: could not find application ${applicationId}`);
 
-  return updateApplication(applicationId, {
-    verificationNotes: [...app.verificationNotes, note],
-    updatedAt: new Date().toISOString(),
-  });
+  const officerId = numericId(note.officerId);
+  if (!officerId) throw new Error(`Add verification: invalid officer id ${note.officerId}`);
+
+  const inserted = unwrap<DbVerification>(
+    await supabase
+      .from('verifications')
+      .insert({
+        application_id: dbApplication.application_id,
+        land_id: dbApplication.land_id,
+        survey_officer_id: officerId,
+        geo_verified: note.isVerified,
+        result: note.isVerified ? 'verified' : 'rejected',
+        notes: note.findings,
+      })
+      .select()
+      .single(),
+    'Insert verification',
+  );
+
+  const app = getApplicationById(applicationId);
+  if (app) {
+    const mapped = mapVerification(inserted, new Map(cache.users.map(user => [user.id, user])));
+    cache.applications = cache.applications.map(item => item.id === app.id ? { ...item, verificationNotes: [...item.verificationNotes, mapped] } : item);
+  }
 };
 
 // Notifications
-export const getNotifications = () => readLocal<Notification>(stores.notifications.key);
+export const getNotifications = () => cache.notifications;
 
 export const getNotificationsForUser = (userId: string) => getNotifications().filter(n => n.userId === userId);
 
-export const addNotification = (notification: Notification) => {
-  persist(stores.notifications, [...getNotifications(), notification]);
-  return notification;
+export const addNotification = async (notification: Notification) => {
+  const recipientId = numericId(notification.userId);
+  if (!recipientId) throw new Error(`Create notification: invalid recipient id ${notification.userId}`);
+
+  const inserted = unwrap<DbNotification>(
+    await supabase
+      .from('notifications')
+      .insert({
+        recipient_user_id: recipientId,
+        title: notification.title,
+        message: notification.message,
+        type: notification.type,
+        deep_link: notification.applicationId ? `/applications/${notification.applicationId}` : null,
+        is_read: notification.read,
+      })
+      .select()
+      .single(),
+    'Create notification',
+  );
+
+  const mapped = mapNotification(inserted);
+  cache.notifications = [mapped, ...cache.notifications];
+  return mapped;
 };
 
-export const markNotificationRead = (id: string) => {
-  const notifications = getNotifications().map(n => n.id === id ? { ...n, read: true } : n);
-  persist(stores.notifications, notifications);
+export const markNotificationRead = async (id: string) => {
+  const notificationId = numericId(id);
+  if (!notificationId) throw new Error(`Mark notification read: invalid notification id ${id}`);
+
+  unwrap(
+    await supabase.from('notifications').update({ is_read: true }).eq('notification_id', notificationId),
+    'Mark notification read',
+  );
+  cache.notifications = cache.notifications.map(n => n.id === id ? { ...n, read: true } : n);
 };
 
-export const markAllNotificationsRead = (userId: string) => {
-  const notifications = getNotifications().map(n => n.userId === userId ? { ...n, read: true } : n);
-  persist(stores.notifications, notifications);
+export const markAllNotificationsRead = async (userId: string) => {
+  const recipientId = numericId(userId);
+  if (!recipientId) throw new Error(`Mark all notifications read: invalid user id ${userId}`);
+
+  unwrap(
+    await supabase.from('notifications').update({ is_read: true }).eq('recipient_user_id', recipientId),
+    'Mark all notifications read',
+  );
+  cache.notifications = cache.notifications.map(n => n.userId === userId ? { ...n, read: true } : n);
 };
 
 // Audit Logs
-export const getAuditLogs = () => readLocal<AuditLog>(stores.auditLogs.key);
+export const getAuditLogs = () => cache.auditLogs;
 
-export const addAuditLog = (log: AuditLog) => {
-  persist(stores.auditLogs, [...getAuditLogs(), log]);
-  return log;
+export const addAuditLog = async (log: AuditLog) => {
+  // TODO: move audit logging to DB triggers or trusted RPC/server-side code.
+  const actorId = cache.users.find(user => user.name === log.actorName)?.id;
+  const inserted = unwrap<DbAuditLog>(
+    await supabase
+      .from('audit_logs')
+      .insert({
+        actor_user_id: numericId(actorId),
+        action_type: log.actionType,
+        target_table: log.applicationId ? 'applications' : null,
+        target_id: numericId(log.applicationId),
+        new_values: { details: log.details, application_id: log.applicationId || null },
+      })
+      .select()
+      .single(),
+    'Create audit log',
+  );
+
+  const mapped = mapAuditLog(inserted, new Map(cache.users.map(user => [user.id, user])));
+  cache.auditLogs = [mapped, ...cache.auditLogs];
+  return mapped;
 };
 
 // Utility

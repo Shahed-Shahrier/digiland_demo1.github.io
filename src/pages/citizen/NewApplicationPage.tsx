@@ -119,29 +119,33 @@ export default function NewApplicationPage() {
     setDocuments(prev => [...prev, doc]);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!user) return;
     const appId = `APP-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
     const now = new Date().toISOString();
-    addApplication({
-      id: appId, applicantId: user.id,
-      applicantName: form.applicantName, applicantNid: form.applicantNid,
-      applicantPhone: form.applicantPhone, applicantEmail: form.applicantEmail,
-      applicantAddress: form.applicantAddress,
-      plotNumber: form.plotNumber, holdingNumber: form.holdingNumber,
-      district: form.district, upazila: form.upazila, mouza: form.mouza,
-      landSize: form.landSize, currentOwner: form.currentOwner,
-      proposedNewOwner: form.proposedNewOwner, transferType: form.transferType,
-      reason: form.reason, deedReference: form.deedReference, remarks: form.remarks,
-      documents, status: 'Pending',
-      comments: [], verificationNotes: [],
-      statusHistory: [{ status: 'Pending', timestamp: now, actor: user.name }],
-      createdAt: now, updatedAt: now,
-    });
-    addAuditLog({ id: generateId('log'), timestamp: now, actorName: user.name, actorRole: user.role, actionType: 'Application Created', applicationId: appId, details: `New application for plot ${form.plotNumber}` });
-    addNotification({ id: generateId('notif'), userId: user.id, title: 'Application Submitted', message: `Your application ${appId} has been submitted successfully.`, type: 'success', read: false, applicationId: appId, createdAt: now });
-    toast({ title: 'Application Submitted', description: `ID: ${appId}` });
-    navigate('/citizen/applications');
+    try {
+      await addApplication({
+        id: appId, applicantId: user.id,
+        applicantName: form.applicantName, applicantNid: form.applicantNid,
+        applicantPhone: form.applicantPhone, applicantEmail: form.applicantEmail,
+        applicantAddress: form.applicantAddress,
+        plotNumber: form.plotNumber, holdingNumber: form.holdingNumber,
+        district: form.district, upazila: form.upazila, mouza: form.mouza,
+        landSize: form.landSize, currentOwner: form.currentOwner,
+        proposedNewOwner: form.proposedNewOwner, transferType: form.transferType,
+        reason: form.reason, deedReference: form.deedReference, remarks: form.remarks,
+        documents, status: 'Pending',
+        comments: [], verificationNotes: [],
+        statusHistory: [{ status: 'Pending', timestamp: now, actor: user.name }],
+        createdAt: now, updatedAt: now,
+      });
+      await addAuditLog({ id: generateId('log'), timestamp: now, actorName: user.name, actorRole: user.role, actionType: 'Application Created', applicationId: appId, details: `New application for plot ${form.plotNumber}` });
+      await addNotification({ id: generateId('notif'), userId: user.id, title: 'Application Submitted', message: `Your application ${appId} has been submitted successfully.`, type: 'success', read: false, applicationId: appId, createdAt: now });
+      toast({ title: 'Application Submitted', description: `ID: ${appId}` });
+      navigate('/citizen/applications');
+    } catch (error) {
+      toast({ title: 'Application Failed', description: error instanceof Error ? error.message : 'Could not submit application', variant: 'destructive' });
+    }
   };
 
   const districts = getDistricts();

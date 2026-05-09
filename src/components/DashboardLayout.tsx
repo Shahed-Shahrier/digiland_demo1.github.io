@@ -44,7 +44,10 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   const navItems = roleNavItems[user.role];
   const unreadCount = getNotificationsForUser(user.id).filter(n => !n.read).length;
 
-  const handleLogout = () => { logout(); navigate('/'); };
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
 
   const roleLabel = {
     citizen: 'Citizen',

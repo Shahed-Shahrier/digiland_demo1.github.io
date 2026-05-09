@@ -22,16 +22,20 @@ export default function VerificationDetailsPage() {
 
   const alreadyVerified = app.verificationNotes.some(v => v.isVerified);
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     const now = new Date().toISOString();
-    addVerificationNote(app.id, { id: generateId('vn'), applicationId: app.id, officerId: user.id, officerName: user.name, findings, isVerified: true, createdAt: now });
-    changeApplicationStatus(app.id, 'Verified', user.name);
-    addAuditLog({ id: generateId('log'), timestamp: now, actorName: user.name, actorRole: user.role, actionType: 'Verification', applicationId: app.id, details: `Land verification completed for ${app.id}` });
-    addNotification({ id: generateId('notif'), userId: app.applicantId, title: 'Verification Complete', message: `Land verification for ${app.id} is complete.`, type: 'info', read: false, applicationId: app.id, createdAt: now });
-    addNotification({ id: generateId('notif'), userId: 'user-officer-1', title: 'Verification Complete', message: `${app.id} has been verified by survey officer.`, type: 'info', read: false, applicationId: app.id, createdAt: now });
-    setFindings('');
-    toast({ title: 'Verification Complete', description: `Case ${app.id} marked as verified.` });
-    setRefresh(r => r + 1);
+    try {
+      await addVerificationNote(app.id, { id: generateId('vn'), applicationId: app.id, officerId: user.id, officerName: user.name, findings, isVerified: true, createdAt: now });
+      await changeApplicationStatus(app.id, 'Verified', user.name);
+      await addAuditLog({ id: generateId('log'), timestamp: now, actorName: user.name, actorRole: user.role, actionType: 'Verification', applicationId: app.id, details: `Land verification completed for ${app.id}` });
+      await addNotification({ id: generateId('notif'), userId: app.applicantId, title: 'Verification Complete', message: `Land verification for ${app.id} is complete.`, type: 'info', read: false, applicationId: app.id, createdAt: now });
+      await addNotification({ id: generateId('notif'), userId: 'user-officer-1', title: 'Verification Complete', message: `${app.id} has been verified by survey officer.`, type: 'info', read: false, applicationId: app.id, createdAt: now });
+      setFindings('');
+      toast({ title: 'Verification Complete', description: `Case ${app.id} marked as verified.` });
+      setRefresh(r => r + 1);
+    } catch (error) {
+      toast({ title: 'Verification Failed', description: error instanceof Error ? error.message : 'Could not submit verification', variant: 'destructive' });
+    }
   };
 
   return (
