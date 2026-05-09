@@ -394,7 +394,7 @@ export async function getUserProfileByEmail(email: string) {
   return mapUser(row, roleName);
 }
 
-export async function getUserProfileByNid(nid: string) export async function getUserProfileByNid(nid: string) {
+export async function getUserProfileByNid(nid: string) {
   const normalizedNid = nid.trim();
   if (!normalizedNid) return null;
 
