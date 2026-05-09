@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { addApplication, addAuditLog, addNotification, generateId, getUsers } from '@/services/storageService';
+import { addApplication, addAuditLog, addNotification, generateId, getUserProfileByNid } from '@/services/storageService';
 import { TransferType, DocumentFile } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { getDistricts, getUpazilas, getMouzas } from '@/data/locationData';
@@ -32,6 +32,8 @@ export default function NewApplicationPage() {
 
   const [currentOwnerLookup, setCurrentOwnerLookup] = useState<'idle' | 'found' | 'not_found'>('idle');
   const [newOwnerLookup, setNewOwnerLookup] = useState<'idle' | 'found' | 'not_found'>('idle');
+  const [currentOwnerLookupLoading, setCurrentOwnerLookupLoading] = useState(false);
+  const [newOwnerLookupLoading, setNewOwnerLookupLoading] = useState(false);
   const [step3Errors, setStep3Errors] = useState<Record<string, string>>({});
   const [step2Errors, setStep2Errors] = useState<Record<string, string>>({});
   const [documents, setDocuments] = useState<DocumentFile[]>([]);
@@ -42,23 +44,37 @@ export default function NewApplicationPage() {
   const setDistrict = (v: string) => setForm(prev => ({ ...prev, district: v, upazila: '', mouza: '' }));
   const setUpazila = (v: string) => setForm(prev => ({ ...prev, upazila: v, mouza: '' }));
 
-  const lookupByNid = (nid: string, type: 'current' | 'new') => {
-    if (!nid.trim()) {
+  const lookupByNid = async (nid: string, type: 'current' | 'new') => {
+    const normalizedNid = nid.trim();
+    if (!normalizedNid) {
       if (type === 'current') setCurrentOwnerLookup('idle');
       else setNewOwnerLookup('idle');
       return;
     }
-    const users = getUsers();
-    const found = users.find(u => u.nid === nid.trim());
-    if (found) {
-      if (type === 'current') {
-        set('currentOwner', found.name);
-        setCurrentOwnerLookup('found');
+
+    if (type === 'current') setCurrentOwnerLookupLoading(true);
+    else setNewOwnerLookupLoading(true);
+
+    try {
+      const found = await getUserProfileByNid(normalizedNid);
+      if (found) {
+        if (type === 'current') {
+          set('currentOwner', found.name);
+          setCurrentOwnerLookup('found');
+        } else {
+          set('proposedNewOwner', found.name);
+          setNewOwnerLookup('found');
+        }
       } else {
-        set('proposedNewOwner', found.name);
-        setNewOwnerLookup('found');
+        if (type === 'current') {
+          set('currentOwner', '');
+          setCurrentOwnerLookup('not_found');
+        } else {
+          set('proposedNewOwner', '');
+          setNewOwnerLookup('not_found');
+        }
       }
-    } else {
+    } catch (error) {
       if (type === 'current') {
         set('currentOwner', '');
         setCurrentOwnerLookup('not_found');
@@ -66,6 +82,14 @@ export default function NewApplicationPage() {
         set('proposedNewOwner', '');
         setNewOwnerLookup('not_found');
       }
+      toast({
+        title: 'NID Search Failed',
+        description: error instanceof Error ? error.message : 'Could not search the database for this NID.',
+        variant: 'destructive',
+      });
+    } finally {
+      if (type === 'current') setCurrentOwnerLookupLoading(false);
+      else setNewOwnerLookupLoading(false);
     }
   };
 
@@ -161,11 +185,26 @@ export default function NewApplicationPage() {
       <div className="flex gap-2">
         <Input
           value={form[nidField]}
-          onChange={e => { set(nidField, e.target.value); if (lookupState !== 'idle') onLookup(); }}
+          onChange={e => {
+            set(nidField, e.target.value);
+            if (nidField === 'currentOwnerNid') {
+              setCurrentOwnerLookup('idle');
+              set('currentOwner', '');
+            } else {
+              setNewOwnerLookup('idle');
+              set('proposedNewOwner', '');
+            }
+          }}
           placeholder="Enter 13-digit NID number"
           className={error ? 'border-destructive' : ''}
         />
-        <Button type="button" variant="secondary" size="icon" onClick={onLookup}>
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          onClick={onLookup}
+          disabled={nidField === 'currentOwnerNid' ? currentOwnerLookupLoading : newOwnerLookupLoading}
+        >
           <Search className="h-4 w-4" />
         </Button>
       </div>
@@ -274,7 +313,7 @@ export default function NewApplicationPage() {
                     nidField="currentOwnerNid"
                     nameValue={form.currentOwner}
                     lookupState={currentOwnerLookup}
-                    onLookup={() => lookupByNid(form.currentOwnerNid, 'current')}
+                    onLookup={() => void lookupByNid(form.currentOwnerNid, 'current')}
                     error={step2Errors.currentOwnerNid}
                   />
                   <NidLookupField
@@ -282,13 +321,13 @@ export default function NewApplicationPage() {
                     nidField="proposedNewOwnerNid"
                     nameValue={form.proposedNewOwner}
                     lookupState={newOwnerLookup}
-                    onLookup={() => lookupByNid(form.proposedNewOwnerNid, 'new')}
+                    onLookup={() => void lookupByNid(form.proposedNewOwnerNid, 'new')}
                     error={step2Errors.proposedNewOwnerNid}
                   />
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                💡 Try demo NIDs: <code className="bg-muted px-1 rounded">1990123456789</code> (Rahim Uddin) or <code className="bg-muted px-1 rounded">1985567891234</code> (Fatema Begum)
+                Search uses the Supabase users table by NID number.
               </p>
             </>
           )}

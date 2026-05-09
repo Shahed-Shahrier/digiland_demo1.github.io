@@ -14,7 +14,12 @@ export default function AllApplicationsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const apps = getApplications()
     .filter(a => statusFilter === 'all' || a.status === statusFilter)
-    .filter(a => a.id.toLowerCase().includes(query.toLowerCase()) || a.applicantName.toLowerCase().includes(query.toLowerCase()) || a.plotNumber.toLowerCase().includes(query.toLowerCase()));
+    .filter(a =>
+      a.id.toLowerCase().includes(query.toLowerCase()) ||
+      a.applicantName.toLowerCase().includes(query.toLowerCase()) ||
+      a.applicantNid.toLowerCase().includes(query.toLowerCase()) ||
+      a.plotNumber.toLowerCase().includes(query.toLowerCase())
+    );
 
   return (
     <DashboardLayout>
@@ -25,7 +30,7 @@ export default function AllApplicationsPage() {
       <div className="flex gap-3 mb-6 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-10" placeholder="Search..." value={query} onChange={e => setQuery(e.target.value)} />
+          <Input className="pl-10" placeholder="Search by app ID, name, NID, or plot..." value={query} onChange={e => setQuery(e.target.value)} />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-48"><SelectValue placeholder="Filter by status" /></SelectTrigger>
