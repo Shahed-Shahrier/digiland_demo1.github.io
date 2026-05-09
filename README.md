@@ -8,7 +8,9 @@ Digi-Land is a React + TypeScript web application that simulates a land record a
 
 - Authentication and session context: `src/contexts/AuthContext.tsx`
 - Route setup and role-based protection: `src/App.tsx`, `src/components/ProtectedRoute.tsx`
-- Local data service (mock backend via localStorage): `src/services/storageService.ts`
+- Supabase-backed data service with local browser cache: `src/services/storageService.ts`
+- Supabase browser client: `src/lib/supabase.ts`
+- Supabase schema: `supabase/schema.sql`
 - Seed/demo dataset and initialization: `src/data/seedData.ts`
 - Domain types: `src/types/index.ts`
 - Location hierarchy data (district -> upazila -> mouza): `src/data/locationData.ts`
@@ -41,7 +43,7 @@ Application startup is in `src/main.tsx`, which renders `src/App.tsx`.
 - `TooltipProvider`
 - `Toaster` and `Sonner` for notifications
 - `AuthProvider`
-- `BrowserRouter`
+- `HashRouter` for GitHub Pages compatibility
 
 Routes are public or protected. Protected routes are wrapped with `ProtectedRoute` and allow only specific roles.
 
@@ -49,18 +51,18 @@ Routes are public or protected. Protected routes are wrapped with `ProtectedRout
 
 `AuthProvider` handles:
 
-- Login with email/password lookup from localStorage users
+- Login with email/password lookup from Supabase-backed users
 - Registration with duplicate email check
 - Session persistence in localStorage key: `digiland_current_user`
 - Audit log entries for login/register/logout actions
 
-Important: this is a prototype auth flow (client-side only, no server-side auth).
+Important: this is a prototype auth flow. It stores demo users in Supabase data tables, but it does not use Supabase Auth.
 
 ## 3) Data model and persistence
 
-There is no API server in this project. Data is persisted directly in browser localStorage.
+This project is hosted as a static GitHub Pages app. The backend is Supabase, accessed directly from the browser with the public Supabase URL and anon key.
 
-Storage keys used by `storageService.ts`:
+Supabase tables used by `storageService.ts`:
 
 - `digiland_users`
 - `digiland_land_records`
@@ -68,7 +70,15 @@ Storage keys used by `storageService.ts`:
 - `digiland_notifications`
 - `digiland_audit_logs`
 
-On first run, seed data is initialized from `src/data/seedData.ts`.
+The same names are also used as browser cache keys:
+
+- `digiland_users`
+- `digiland_land_records`
+- `digiland_applications`
+- `digiland_notifications`
+- `digiland_audit_logs`
+
+On first run, seed data from `src/data/seedData.ts` is inserted into Supabase if the tables are empty. If Supabase is not configured during local development, the app falls back to the browser cache.
 
 ## 4) End-to-end workflow
 
@@ -145,6 +155,7 @@ On first run, seed data is initialized from `src/data/seedData.ts`.
 - shadcn/ui + Radix UI
 - React Hook Form + Zod
 - TanStack React Query
+- Supabase JavaScript client
 - Recharts
 - Vitest + Testing Library
 
@@ -162,7 +173,26 @@ Install dependencies:
 npm install
 ```
 
-Run dev server:
+Create a local `.env` file:
+
+```bash
+cp .env.example .env
+```
+
+Fill in the Supabase values:
+
+```bash
+VITE_SUPABASE_URL=https://ozrbinmqhtbpqoehotjc.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
+Set up Supabase:
+
+1. Open Supabase SQL Editor.
+2. Run `supabase/schema.sql`.
+3. Use Project Settings > API to copy the Project URL and anon public key.
+
+Run the Vite dev server:
 
 ```bash
 npm run dev
@@ -211,17 +241,29 @@ Current test coverage is minimal (placeholder example test in `src/test/example.
 
 ## Deployment notes (GitHub Pages)
 
-This is a Vite SPA. For GitHub Pages deployment, verify:
+This is a Vite SPA deployed by `.github/workflows/deploy-pages.yml`.
+
+Before deployment:
+
+1. Run `supabase/schema.sql` in the Supabase SQL Editor.
+2. Add these GitHub repository secrets:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+3. Push to `main` or run the workflow manually.
+
+The workflow sets `VITE_BASE_PATH` for the repository pages path and uploads `dist/` to GitHub Pages.
+
+For GitHub Pages deployment, verify:
 
 1. Vite `base` path in `vite.config.ts` if deploying to a project subpath.
-2. SPA route fallback strategy (e.g., `404.html` redirect approach) to avoid 404 on refresh for nested routes.
+2. The app continues to use `HashRouter` unless you add a custom SPA fallback.
 3. Build output from `dist/` is what gets deployed.
 
 ## Current limitations
 
-- No real backend API (localStorage only)
+- Supabase row-level-security policies in `supabase/schema.sql` are intentionally open for demo use
 - Client-side-only authorization
 - Passwords are not hashed (prototype behavior)
-- Data can be cleared with browser storage reset
+- Browser cache can be cleared, but Supabase remains the source of truth when configured
 
 Use this codebase as a prototype/demo foundation, not a production-ready secured system.

@@ -1,116 +1,208 @@
-import { User, LandRecord, Application, Notification, AuditLog, ApplicationStatus, ReviewComment, VerificationNote, UserRole } from '@/types';
+import { User, LandRecord, Application, Notification, AuditLog, ApplicationStatus, ReviewComment, VerificationNote } from '@/types';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { demoUsers, mockApplications, mockAuditLogs, mockLandRecords, mockNotifications } from '@/data/seedData';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+type Entity = User | LandRecord | Application | Notification | AuditLog;
 
-async function fetchOrLocal<T>(path: string, fallback: () => T): Promise<T> {
-  if (!API_BASE) return Promise.resolve(fallback());
-  const res = await fetch(`${API_BASE}${path}`);
-  if (!res.ok) throw new Error(`API error ${res.status}`);
-  return res.json();
+type StoreConfig<T extends Entity> = {
+  key: string;
+  table: string;
+  seed: T[];
+};
+
+type SupabaseRow<T> = {
+  id: string;
+  data: T;
+};
+
+const stores = {
+  users: { key: 'digiland_users', table: 'digiland_users', seed: demoUsers },
+  landRecords: { key: 'digiland_land_records', table: 'digiland_land_records', seed: mockLandRecords },
+  applications: { key: 'digiland_applications', table: 'digiland_applications', seed: mockApplications },
+  notifications: { key: 'digiland_notifications', table: 'digiland_notifications', seed: mockNotifications },
+  auditLogs: { key: 'digiland_audit_logs', table: 'digiland_audit_logs', seed: mockAuditLogs },
+} satisfies Record<string, StoreConfig<Entity>>;
+
+function readLocal<T>(key: string): T[] {
+  return JSON.parse(localStorage.getItem(key) || '[]') as T[];
+}
+
+function writeLocal<T>(key: string, rows: T[]) {
+  localStorage.setItem(key, JSON.stringify(rows));
+}
+
+function seedLocalIfEmpty<T extends Entity>(config: StoreConfig<T>) {
+  if (!localStorage.getItem(config.key)) {
+    writeLocal(config.key, config.seed);
+  }
+}
+
+async function loadRemote<T extends Entity>(config: StoreConfig<T>) {
+  if (!supabase) return;
+
+  const { data, error } = await supabase
+    .from(config.table)
+    .select('id,data')
+    .order('updated_at', { ascending: false });
+
+  if (error) throw error;
+
+  const rows = ((data || []) as SupabaseRow<T>[]).map(row => row.data);
+  if (rows.length === 0 && config.seed.length > 0) {
+    await upsertMany(config, config.seed);
+    writeLocal(config.key, config.seed);
+    return;
+  }
+
+  writeLocal(config.key, rows);
+}
+
+async function upsertMany<T extends Entity>(config: StoreConfig<T>, rows: T[]) {
+  if (!supabase || rows.length === 0) return;
+
+  const { error } = await supabase
+    .from(config.table)
+    .upsert(rows.map(row => ({ id: row.id, data: row })));
+
+  if (error) throw error;
+}
+
+function persist<T extends Entity>(config: StoreConfig<T>, rows: T[]) {
+  writeLocal(config.key, rows);
+  if (isSupabaseConfigured) {
+    void upsertMany(config, rows).catch(error => console.error(`Supabase sync failed for ${config.table}`, error));
+  }
+}
+
+function removeRemote(config: StoreConfig<Entity>, id: string) {
+  if (!supabase) return;
+  void supabase.from(config.table).delete().eq('id', id).then(({ error }) => {
+    if (error) console.error(`Supabase delete failed for ${config.table}`, error);
+  });
+}
+
+export async function initializeAppData() {
+  if (!isSupabaseConfigured) {
+    Object.values(stores).forEach(seedLocalIfEmpty);
+    localStorage.setItem('digiland_initialized', 'true');
+    return;
+  }
+
+  try {
+    await Promise.all(Object.values(stores).map(loadRemote));
+    localStorage.setItem('digiland_initialized', 'true');
+  } catch (error) {
+    console.error('Could not load Supabase data. Using cached browser data until the next refresh.', error);
+    Object.values(stores).forEach(seedLocalIfEmpty);
+  }
 }
 
 // Users
-export const getUsers = () => {
-  return fetchOrLocal<User[]>('/api/users', () => JSON.parse(localStorage.getItem('digiland_users') || '[]'));
-};
-export const getUserById = async (id: string) => {
-  const users = await getUsers();
-  return users.find(u => u.id === id) || null;
-};
-export const addUser = async (user: User) => {
-  if (!API_BASE) {
-    const users: User[] = JSON.parse(localStorage.getItem('digiland_users') || '[]');
-    users.push(user);
-    localStorage.setItem('digiland_users', JSON.stringify(users));
-    return user;
-  }
-  const res = await fetch(`${API_BASE}/api/users`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(user) });
-  return res.json();
+export const getUsers = () => readLocal<User>(stores.users.key);
+
+export const getUserById = (id: string) => getUsers().find(u => u.id === id) || null;
+
+export const addUser = (user: User) => {
+  const users = [...getUsers(), user];
+  persist(stores.users, users);
+  return user;
 };
 
-// Land Records (read-only via API or local)
-export const getLandRecords = () => fetchOrLocal<LandRecord[]>('/api/land-records', () => JSON.parse(localStorage.getItem('digiland_land_records') || '[]'));
-export const addLandRecord = (r: LandRecord) => {
-  const recs: LandRecord[] = JSON.parse(localStorage.getItem('digiland_land_records') || '[]');
-  recs.push(r);
-  localStorage.setItem('digiland_land_records', JSON.stringify(recs));
+export const deleteUser = (id: string) => {
+  persist(stores.users, getUsers().filter(u => u.id !== id));
+  removeRemote(stores.users, id);
 };
+
+// Land Records
+export const getLandRecords = () => readLocal<LandRecord>(stores.landRecords.key);
+
+export const addLandRecord = (record: LandRecord) => {
+  persist(stores.landRecords, [...getLandRecords(), record]);
+  return record;
+};
+
 export const updateLandRecord = (id: string, updates: Partial<LandRecord>) => {
-  const recs: LandRecord[] = JSON.parse(localStorage.getItem('digiland_land_records') || '[]');
-  localStorage.setItem('digiland_land_records', JSON.stringify(recs.map(r => r.id === id ? { ...r, ...updates } : r)));
+  const records = getLandRecords().map(r => r.id === id ? { ...r, ...updates } : r);
+  persist(stores.landRecords, records);
+  return records.find(r => r.id === id);
 };
+
 export const deleteLandRecord = (id: string) => {
-  const recs: LandRecord[] = JSON.parse(localStorage.getItem('digiland_land_records') || '[]');
-  localStorage.setItem('digiland_land_records', JSON.stringify(recs.filter(r => r.id !== id)));
+  persist(stores.landRecords, getLandRecords().filter(r => r.id !== id));
+  removeRemote(stores.landRecords, id);
 };
 
 // Applications
-export const getApplications = () => fetchOrLocal<Application[]>('/api/applications', () => JSON.parse(localStorage.getItem('digiland_applications') || '[]'));
-export const getApplicationById = async (id: string) => {
-  if (!API_BASE) {
-    const apps: Application[] = JSON.parse(localStorage.getItem('digiland_applications') || '[]');
-    return apps.find(a => a.id === id);
-  }
-  const res = await fetch(`${API_BASE}/api/applications/${id}`);
-  if (!res.ok) return null;
-  return res.json();
-};
+export const getApplications = () => readLocal<Application>(stores.applications.key);
+
+export const getApplicationById = (id: string) => getApplications().find(a => a.id === id);
+
 export const addApplication = (app: Application) => {
-  const apps: Application[] = JSON.parse(localStorage.getItem('digiland_applications') || '[]');
-  apps.push(app);
-  localStorage.setItem('digiland_applications', JSON.stringify(apps));
+  persist(stores.applications, [...getApplications(), app]);
+  return app;
 };
+
 export const updateApplication = (id: string, updates: Partial<Application>) => {
-  const apps: Application[] = JSON.parse(localStorage.getItem('digiland_applications') || '[]');
-  localStorage.setItem('digiland_applications', JSON.stringify(apps.map(a => a.id === id ? { ...a, ...updates } : a)));
+  const apps = getApplications().map(a => a.id === id ? { ...a, ...updates } : a);
+  persist(stores.applications, apps);
+  return apps.find(a => a.id === id);
 };
 
 export const changeApplicationStatus = (id: string, status: ApplicationStatus, actor: string) => {
-  const apps: Application[] = JSON.parse(localStorage.getItem('digiland_applications') || '[]');
-  const app = apps.find(a => a.id === id);
+  const app = getApplicationById(id);
   if (!app) return;
+
   const history = [...app.statusHistory, { status, timestamp: new Date().toISOString(), actor }];
-  updateApplication(id, { status, statusHistory: history, updatedAt: new Date().toISOString() });
+  return updateApplication(id, { status, statusHistory: history, updatedAt: new Date().toISOString() });
 };
 
 export const addComment = (applicationId: string, comment: ReviewComment) => {
-  const apps: Application[] = JSON.parse(localStorage.getItem('digiland_applications') || '[]');
-  const app = apps.find(a => a.id === applicationId);
+  const app = getApplicationById(applicationId);
   if (!app) return;
-  app.comments = [...app.comments, comment];
-  app.updatedAt = new Date().toISOString();
-  localStorage.setItem('digiland_applications', JSON.stringify(apps));
+
+  return updateApplication(applicationId, {
+    comments: [...app.comments, comment],
+    updatedAt: new Date().toISOString(),
+  });
 };
 
 export const addVerificationNote = (applicationId: string, note: VerificationNote) => {
-  const apps: Application[] = JSON.parse(localStorage.getItem('digiland_applications') || '[]');
-  const app = apps.find(a => a.id === applicationId);
+  const app = getApplicationById(applicationId);
   if (!app) return;
-  app.verificationNotes = [...app.verificationNotes, note];
-  app.updatedAt = new Date().toISOString();
-  localStorage.setItem('digiland_applications', JSON.stringify(apps));
+
+  return updateApplication(applicationId, {
+    verificationNotes: [...app.verificationNotes, note],
+    updatedAt: new Date().toISOString(),
+  });
 };
 
 // Notifications
-export const getNotifications = () => JSON.parse(localStorage.getItem('digiland_notifications') || '[]') as Notification[];
+export const getNotifications = () => readLocal<Notification>(stores.notifications.key);
+
 export const getNotificationsForUser = (userId: string) => getNotifications().filter(n => n.userId === userId);
-export const addNotification = (n: Notification) => {
-  const notifs: Notification[] = JSON.parse(localStorage.getItem('digiland_notifications') || '[]');
-  notifs.push(n);
-  localStorage.setItem('digiland_notifications', JSON.stringify(notifs));
+
+export const addNotification = (notification: Notification) => {
+  persist(stores.notifications, [...getNotifications(), notification]);
+  return notification;
 };
+
 export const markNotificationRead = (id: string) => {
-  const notifs: Notification[] = JSON.parse(localStorage.getItem('digiland_notifications') || '[]');
-  localStorage.setItem('digiland_notifications', JSON.stringify(notifs.map(n => n.id === id ? { ...n, read: true } : n)));
+  const notifications = getNotifications().map(n => n.id === id ? { ...n, read: true } : n);
+  persist(stores.notifications, notifications);
 };
+
 export const markAllNotificationsRead = (userId: string) => {
-  const notifs: Notification[] = JSON.parse(localStorage.getItem('digiland_notifications') || '[]');
-  localStorage.setItem('digiland_notifications', JSON.stringify(notifs.map(n => n.userId === userId ? { ...n, read: true } : n)));
+  const notifications = getNotifications().map(n => n.userId === userId ? { ...n, read: true } : n);
+  persist(stores.notifications, notifications);
 };
 
 // Audit Logs
-export const getAuditLogs = () => JSON.parse(localStorage.getItem('digiland_audit_logs') || '[]') as AuditLog[];
-export const addAuditLog = (log: AuditLog) => { const logs = getAuditLogs(); logs.push(log); localStorage.setItem('digiland_audit_logs', JSON.stringify(logs)); };
+export const getAuditLogs = () => readLocal<AuditLog>(stores.auditLogs.key);
+
+export const addAuditLog = (log: AuditLog) => {
+  persist(stores.auditLogs, [...getAuditLogs(), log]);
+  return log;
+};
 
 // Utility
 export const generateId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;

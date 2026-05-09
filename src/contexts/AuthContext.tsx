@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, UserRole } from '@/types';
-import { getUsers, addUser, addAuditLog, generateId } from '@/services/storageService';
-import { initializeSeedData } from '@/data/seedData';
+import { getUsers, addUser, addAuditLog, generateId, initializeAppData } from '@/services/storageService';
 
 interface AuthContextType {
   user: User | null;
@@ -15,11 +14,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    initializeSeedData();
-    const stored = localStorage.getItem('digiland_current_user');
-    if (stored) setUser(JSON.parse(stored));
+    initializeAppData().finally(() => {
+      const stored = localStorage.getItem('digiland_current_user');
+      if (stored) setUser(JSON.parse(stored));
+      setIsReady(true);
+    });
   }, []);
 
   const login = (email: string, password: string) => {
@@ -50,6 +52,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     localStorage.removeItem('digiland_current_user');
   };
+
+  if (!isReady) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center text-sm text-muted-foreground">
+        Loading Digi-Land...
+      </div>
+    );
+  }
 
   return (
     <AuthContext.Provider value={{ user, login, register, logout, isAuthenticated: !!user }}>
