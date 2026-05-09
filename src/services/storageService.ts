@@ -394,6 +394,24 @@ export async function getUserProfileByEmail(email: string) {
   return mapUser(row, roleName);
 }
 
+export async function getUserProfileByNid(nid: string) {
+  const normalizedNid = nid.trim();
+  if (!normalizedNid) return null;
+
+  const result = await supabase
+    .from('users')
+    .select('*')
+    .eq('nid_number', normalizedNid)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  const row = unwrap<DbUser | null>(result, 'Search user by NID');
+  if (!row) return null;
+
+  const profile = await getUserProfileByEmail(row.email);
+  return profile || mapUser(row);
+}
+
 export async function getUserProfileByAuthId(authUserId: string, email?: string) {
   const byAuthId = await supabase
     .from('users')
