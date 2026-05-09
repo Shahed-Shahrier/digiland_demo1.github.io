@@ -36,7 +36,7 @@ export default function NewApplicationPage() {
   const [step2Errors, setStep2Errors] = useState<Record<string, string>>({});
   const [documents, setDocuments] = useState<DocumentFile[]>([]);
 
-  const set = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }));
+  const set = (field: keyof typeof form, value: string) => setForm(prev => ({ ...prev, [field]: value }));
 
   // When district changes, reset upazila and mouza
   const setDistrict = (v: string) => setForm(prev => ({ ...prev, district: v, upazila: '', mouza: '' }));
@@ -149,14 +149,14 @@ export default function NewApplicationPage() {
   const mouzas = getMouzas(form.district, form.upazila);
 
   const NidLookupField = ({ label, nidField, nameValue, lookupState, onLookup, error }: {
-    label: string; nidField: string; nameValue: string;
+    label: string; nidField: 'currentOwnerNid' | 'proposedNewOwnerNid'; nameValue: string;
     lookupState: 'idle' | 'found' | 'not_found'; onLookup: () => void; error?: string;
   }) => (
     <div className="space-y-2">
       <Label>{label} NID Number <span className="text-destructive">*</span></Label>
       <div className="flex gap-2">
         <Input
-          value={(form as any)[nidField]}
+          value={form[nidField]}
           onChange={e => { set(nidField, e.target.value); if (lookupState !== 'idle') onLookup(); }}
           placeholder="Enter 13-digit NID number"
           className={error ? 'border-destructive' : ''}

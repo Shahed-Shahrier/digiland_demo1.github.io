@@ -17,6 +17,7 @@ export default function LandRecordsManagementPage() {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
   const [form, setForm] = useState({ ownerName: '', plotNumber: '', holdingNumber: '', district: '', upazila: '', mouza: '', landSize: '' });
+  const formFields = Object.keys(form) as Array<keyof typeof form>;
 
   const records = getLandRecords().filter(r => r.plotNumber.toLowerCase().includes(query.toLowerCase()) || r.ownerName.toLowerCase().includes(query.toLowerCase()));
 
@@ -40,10 +41,10 @@ export default function LandRecordsManagementPage() {
           <DialogContent>
             <DialogHeader><DialogTitle>New Land Record</DialogTitle></DialogHeader>
             <div className="space-y-3">
-              {Object.keys(form).map(key => (
+              {formFields.map(key => (
                 <div key={key} className="space-y-1">
                   <Label className="capitalize">{key.replace(/([A-Z])/g, ' $1')}</Label>
-                  <Input value={(form as any)[key]} onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))} />
+                  <Input value={form[key]} onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))} />
                 </div>
               ))}
               <Button className="w-full" onClick={handleAdd}>Add Record</Button>
