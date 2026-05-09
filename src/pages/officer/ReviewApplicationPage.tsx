@@ -22,22 +22,26 @@ export default function ReviewApplicationPage() {
   const app = getApplicationById(id || '');
   if (!app || !user) return <DashboardLayout><p className="text-muted-foreground">Application not found.</p></DashboardLayout>;
 
-  const doAction = (status: ApplicationStatus, label: string) => {
+  const doAction = async (status: ApplicationStatus, label: string) => {
     const now = new Date().toISOString();
-    changeApplicationStatus(app.id, status, user.name);
-    if (comment) {
-      addComment(app.id, { id: generateId('cmt'), applicationId: app.id, authorId: user.id, authorName: user.name, authorRole: user.role, comment, createdAt: now });
+    try {
+      await changeApplicationStatus(app.id, status, user.name);
+      if (comment) {
+        await addComment(app.id, { id: generateId('cmt'), applicationId: app.id, authorId: user.id, authorName: user.name, authorRole: user.role, comment, createdAt: now });
+      }
+      await addAuditLog({ id: generateId('log'), timestamp: now, actorName: user.name, actorRole: user.role, actionType: label, applicationId: app.id, details: `${label}: ${app.id}` });
+      await addNotification({ id: generateId('notif'), userId: app.applicantId, title: label, message: `Your application ${app.id} status: ${status}`, type: status === 'Approved' ? 'success' : status === 'Rejected' ? 'error' : 'info', read: false, applicationId: app.id, createdAt: now });
+      // Assign survey officer if moving to Under Review
+      if (status === 'Under Review') {
+        await updateApplication(app.id, { assignedSurveyOfficerId: 'user-survey-1' });
+        await addNotification({ id: generateId('notif'), userId: 'user-survey-1', title: 'Verification Assigned', message: `You have been assigned to verify ${app.id}.`, type: 'info', read: false, applicationId: app.id, createdAt: now });
+      }
+      setComment('');
+      toast({ title: label, description: `Application ${app.id} updated.` });
+      setRefresh(r => r + 1);
+    } catch (error) {
+      toast({ title: `${label} Failed`, description: error instanceof Error ? error.message : 'Could not update application', variant: 'destructive' });
     }
-    addAuditLog({ id: generateId('log'), timestamp: now, actorName: user.name, actorRole: user.role, actionType: label, applicationId: app.id, details: `${label}: ${app.id}` });
-    addNotification({ id: generateId('notif'), userId: app.applicantId, title: label, message: `Your application ${app.id} status: ${status}`, type: status === 'Approved' ? 'success' : status === 'Rejected' ? 'error' : 'info', read: false, applicationId: app.id, createdAt: now });
-    // Assign survey officer if moving to Under Review
-    if (status === 'Under Review') {
-      updateApplication(app.id, { assignedSurveyOfficerId: 'user-survey-1' });
-      addNotification({ id: generateId('notif'), userId: 'user-survey-1', title: 'Verification Assigned', message: `You have been assigned to verify ${app.id}.`, type: 'info', read: false, applicationId: app.id, createdAt: now });
-    }
-    setComment('');
-    toast({ title: label, description: `Application ${app.id} updated.` });
-    setRefresh(r => r + 1);
   };
 
   return (

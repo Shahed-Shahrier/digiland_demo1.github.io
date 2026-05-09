@@ -20,12 +20,12 @@ export default function RegisterPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = register(name, email, password, role, phone);
+    const result = await register(name, email, password, role, phone);
     if (result.success) {
       const paths = { citizen: '/citizen', land_officer: '/officer', survey_officer: '/survey', admin: '/admin' };
-      navigate(paths[role]);
+      navigate(paths[result.user?.role || role]);
     } else {
       toast({ title: 'Registration Failed', description: result.error, variant: 'destructive' });
     }

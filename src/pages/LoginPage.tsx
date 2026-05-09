@@ -15,24 +15,24 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const paths = { citizen: '/citizen', land_officer: '/officer', survey_officer: '/survey', admin: '/admin' };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = login(email, password);
+    const result = await login(email, password);
     if (result.success) {
-      const user = JSON.parse(localStorage.getItem('digiland_current_user')!);
-      const paths = { citizen: '/citizen', land_officer: '/officer', survey_officer: '/survey', admin: '/admin' };
-      navigate(paths[user.role as keyof typeof paths]);
+      navigate(paths[result.user?.role || 'citizen']);
     } else {
       toast({ title: 'Login Failed', description: result.error, variant: 'destructive' });
     }
   };
 
-  const quickLogin = (email: string) => {
-    const result = login(email, 'demo1234');
+  const quickLogin = async (email: string) => {
+    const result = await login(email, 'demo1234');
     if (result.success) {
-      const user = JSON.parse(localStorage.getItem('digiland_current_user')!);
-      const paths = { citizen: '/citizen', land_officer: '/officer', survey_officer: '/survey', admin: '/admin' };
-      navigate(paths[user.role as keyof typeof paths]);
+      navigate(paths[result.user?.role || 'citizen']);
+    } else {
+      toast({ title: 'Login Failed', description: result.error, variant: 'destructive' });
     }
   };
 

@@ -8,10 +8,10 @@ Digi-Land is a React + TypeScript web application that simulates a land record a
 
 - Authentication and session context: `src/contexts/AuthContext.tsx`
 - Route setup and role-based protection: `src/App.tsx`, `src/components/ProtectedRoute.tsx`
-- Supabase-backed data service with local browser cache: `src/services/storageService.ts`
-- Supabase browser client: `src/lib/supabase.ts`
-- Supabase schema: `supabase/schema.sql`
-- Seed/demo dataset and initialization: `src/data/seedData.ts`
+- Supabase-backed data service: `src/services/storageService.ts`
+- Supabase browser client: `src/integrations/supabase/client.ts`
+- Supabase type placeholders: `src/integrations/supabase/types.ts`
+- RLS policy draft: `supabase/migrations/0001_digiland_rls_policies_draft.sql`
 - Domain types: `src/types/index.ts`
 - Location hierarchy data (district -> upazila -> mouza): `src/data/locationData.ts`
 
@@ -52,33 +52,25 @@ Routes are public or protected. Protected routes are wrapped with `ProtectedRout
 `AuthProvider` handles:
 
 - Login with email/password lookup from Supabase-backed users
-- Registration with duplicate email check
-- Session persistence in localStorage key: `digiland_current_user`
+- Registration with Supabase Auth sign-up
+- Session persistence through Supabase Auth
 - Audit log entries for login/register/logout actions
 
-Important: this is a prototype auth flow. It stores demo users in Supabase data tables, but it does not use Supabase Auth.
+Important: UI roles are hints only. Real authorization must be enforced by Supabase RLS policies.
 
 ## 3) Data model and persistence
 
-This project is hosted as a static GitHub Pages app. The backend is Supabase, accessed directly from the browser with the public Supabase URL and anon key.
+This project is hosted as a static GitHub Pages app. The backend is Supabase, accessed directly from the browser with the public Supabase URL and publishable key, or legacy anon key.
 
 Supabase tables used by `storageService.ts`:
 
-- `digiland_users`
-- `digiland_land_records`
-- `digiland_applications`
-- `digiland_notifications`
-- `digiland_audit_logs`
+- `users`, `roles`, `user_roles`
+- `land_parcels`
+- `applications`, `application_new_owners`, `application_status_history`
+- `documents`, `reviews`, `verifications`
+- `notifications`, `audit_logs`
 
-The same names are also used as browser cache keys:
-
-- `digiland_users`
-- `digiland_land_records`
-- `digiland_applications`
-- `digiland_notifications`
-- `digiland_audit_logs`
-
-On first run, seed data from `src/data/seedData.ts` is inserted into Supabase if the tables are empty. If Supabase is not configured during local development, the app falls back to the browser cache.
+The service keeps an in-memory cache after initial load because the current UI reads data synchronously in many pages. Runtime data is not backed by `localStorage`.
 
 ## 4) End-to-end workflow
 
@@ -173,24 +165,27 @@ Install dependencies:
 npm install
 ```
 
-Create a local `.env` file:
+Create a local `.env.local` file:
 
 ```bash
-cp .env.example .env
+cp .env.example .env.local
 ```
 
 Fill in the Supabase values:
 
 ```bash
 VITE_SUPABASE_URL=https://ozrbinmqhtbpqoehotjc.supabase.co
-VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
+# or legacy fallback:
+# VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
 Set up Supabase:
 
-1. Open Supabase SQL Editor.
-2. Run `supabase/schema.sql`.
-3. Use Project Settings > API to copy the Project URL and anon public key.
+1. Review `supabase/migrations/0001_digiland_rls_policies_draft.sql`.
+2. Add or confirm a secure mapping from `public.users` to `auth.users`, such as `users.auth_user_id`.
+3. Apply reviewed RLS policies in Supabase SQL Editor.
+4. Use Project Settings > API to copy the Project URL and publishable key, or legacy anon key.
 
 Run the Vite dev server:
 
@@ -227,7 +222,7 @@ Equivalent Bun commands also work (`bun install`, `bun run dev`, etc.).
 
 ## Demo accounts
 
-The seed data includes demo users (password: `demo1234`):
+Demo quick-login buttons use these emails and password `demo1234`, but they only work if matching Supabase Auth users and `public.users` profiles exist:
 
 - `citizen@demo.com`
 - `officer@demo.com`
@@ -245,10 +240,10 @@ This is a Vite SPA deployed by `.github/workflows/deploy-pages.yml`.
 
 Before deployment:
 
-1. Run `supabase/schema.sql` in the Supabase SQL Editor.
+1. Review and apply `supabase/migrations/0001_digiland_rls_policies_draft.sql` in Supabase.
 2. Add these GitHub repository secrets:
    - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_SUPABASE_PUBLISHABLE_KEY` preferred, or `VITE_SUPABASE_ANON_KEY`
 3. Push to `main` or run the workflow manually.
 
 The workflow sets `VITE_BASE_PATH` for the repository pages path and uploads `dist/` to GitHub Pages.
@@ -259,11 +254,22 @@ For GitHub Pages deployment, verify:
 2. The app continues to use `HashRouter` unless you add a custom SPA fallback.
 3. Build output from `dist/` is what gets deployed.
 
+Supabase Auth redirect URLs to configure:
+
+- `http://localhost:5173`
+- `http://localhost:5173/*`
+- `https://shahrier.tech`
+- `https://shahrier.tech/*`
+- `https://shahrier.tech/digiland_demo1.github.io`
+- `https://shahrier.tech/digiland_demo1.github.io/*`
+- `https://shahed-shahrier.github.io/digiland_demo1.github.io`
+- `https://shahed-shahrier.github.io/digiland_demo1.github.io/*`
+
 ## Current limitations
 
-- Supabase row-level-security policies in `supabase/schema.sql` are intentionally open for demo use
-- Client-side-only authorization
-- Passwords are not hashed (prototype behavior)
-- Browser cache can be cleared, but Supabase remains the source of truth when configured
+- RLS policies are a draft and must be reviewed before production
+- Some enum values and ownership joins need live-schema verification
+- Audit inserts from the browser are temporary and should move to DB triggers/RPC/server-side code
+- File upload storage is not implemented; the app inserts document metadata only
 
 Use this codebase as a prototype/demo foundation, not a production-ready secured system.

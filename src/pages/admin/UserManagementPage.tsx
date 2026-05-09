@@ -14,10 +14,14 @@ export default function UserManagementPage() {
   const { toast } = useToast();
   const users = getUsers().filter(u => u.name.toLowerCase().includes(query.toLowerCase()) || u.email.toLowerCase().includes(query.toLowerCase()));
 
-  const handleDelete = (id: string, name: string) => {
-    deleteUser(id);
-    toast({ title: 'User Deleted', description: `${name} has been removed.` });
-    setRefresh(r => r + 1);
+  const handleDelete = async (id: string, name: string) => {
+    try {
+      await deleteUser(id);
+      toast({ title: 'User Deleted', description: `${name} has been removed.` });
+      setRefresh(r => r + 1);
+    } catch (error) {
+      toast({ title: 'Delete Failed', description: error instanceof Error ? error.message : 'Could not delete user', variant: 'destructive' });
+    }
   };
 
   const roleColors: Record<string, string> = {
