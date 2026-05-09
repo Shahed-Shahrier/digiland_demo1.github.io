@@ -74,14 +74,16 @@ export default function LandingPage() {
           <h2 className="text-2xl font-bold text-center mb-8">Demo Accounts</h2>
           <div className="grid sm:grid-cols-2 gap-4">
             {[
-              { role: 'Citizen', email: 'citizen@demo.com', pw: 'demo1234' },
-              { role: 'Land Officer', email: 'officer@demo.com', pw: 'demo1234' },
-              { role: 'Survey Officer', email: 'survey@demo.com', pw: 'demo1234' },
-              { role: 'Administrator', email: 'admin@demo.com', pw: 'demo1234' },
+              { role: 'Citizen', email: 'nusrat.jahan@digiland.demo' },
+              { role: 'Citizen', email: 'abdul.karim@digiland.demo' },
+              { role: 'Land Officer', email: 'sadia.islam@digiland.demo' },
+              { role: 'Survey Officer', email: 'rahim.uddin@digiland.demo' },
+              { role: 'Admin', email: 'farhana.akter@digiland.demo' },
+              { role: 'Super Admin', email: 'shahed.admin@digiland.demo' },
             ].map(d => (
-              <div key={d.role} className="rounded-lg border bg-card p-4">
+              <div key={d.email} className="rounded-lg border bg-card p-4">
                 <p className="font-semibold text-sm">{d.role}</p>
-                <p className="text-xs text-muted-foreground mt-1">{d.email} / {d.pw}</p>
+                <p className="text-xs text-muted-foreground mt-1">{d.email}</p>
               </div>
             ))}
           </div>

@@ -27,13 +27,9 @@ export default function LoginPage() {
     }
   };
 
-  const quickLogin = async (email: string) => {
-    const result = await login(email, 'demo1234');
-    if (result.success) {
-      navigate(paths[result.user?.role || 'citizen']);
-    } else {
-      toast({ title: 'Login Failed', description: result.error, variant: 'destructive' });
-    }
+  const fillDemoEmail = (demoEmail: string) => {
+    setEmail(demoEmail);
+    setPassword('');
   };
 
   return (
@@ -60,15 +56,17 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-6">
-            <p className="text-xs text-center text-muted-foreground mb-3">Quick demo login</p>
+            <p className="text-xs text-center text-muted-foreground mb-3">Use demo email</p>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { label: 'Citizen', email: 'citizen@demo.com' },
-                { label: 'Officer', email: 'officer@demo.com' },
-                { label: 'Survey', email: 'survey@demo.com' },
-                { label: 'Admin', email: 'admin@demo.com' },
+                { label: 'Citizen 1', email: 'nusrat.jahan@digiland.demo' },
+                { label: 'Citizen 2', email: 'abdul.karim@digiland.demo' },
+                { label: 'Reviewer', email: 'sadia.islam@digiland.demo' },
+                { label: 'Survey', email: 'rahim.uddin@digiland.demo' },
+                { label: 'Admin', email: 'farhana.akter@digiland.demo' },
+                { label: 'Shahed', email: 'shahed.admin@digiland.demo' },
               ].map(d => (
-                <Button key={d.label} variant="outline" size="sm" onClick={() => quickLogin(d.email)}>{d.label}</Button>
+                <Button key={d.label} type="button" variant="outline" size="sm" onClick={() => fillDemoEmail(d.email)}>{d.label}</Button>
               ))}
             </div>
           </div>

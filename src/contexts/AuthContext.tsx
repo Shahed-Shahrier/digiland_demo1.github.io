@@ -3,13 +3,14 @@ import { Session } from '@supabase/supabase-js';
 import { User, UserRole } from '@/types';
 import { addAuditLog, createUserProfile, generateId, getUserProfileByAuthId, initializeAppData, refreshAppData } from '@/services/storageService';
 import { supabase } from '@/integrations/supabase/client';
+import { PUBLIC_REGISTRATION_DB_ROLE, PUBLIC_REGISTRATION_ROLE } from '@/lib/roles';
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
-  register: (name: string, email: string, password: string, role: UserRole, phone?: string, nid?: string, address?: string) => Promise<{ success: boolean; error?: string; user?: User }>;
+  register: (name: string, email: string, password: string, role?: UserRole, phone?: string, nid?: string, address?: string) => Promise<{ success: boolean; error?: string; user?: User; needsEmailConfirmation?: boolean }>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
@@ -32,10 +33,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function boot() {
       try {
-        await initializeAppData();
         const { data, error } = await supabase.auth.getSession();
         if (error) throw error;
         const profile = await profileForSession(data.session);
+        if (profile) await initializeAppData();
         if (!mounted) return;
         setSession(data.session);
         setUser(profile);
@@ -49,16 +50,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     boot();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!mounted) return;
       setSession(nextSession);
       void profileForSession(nextSession)
-        .then(setUser)
-        .catch(error => setBootError(error instanceof Error ? error.message : 'Could not load user profile'));
+        .then(profile => {
+          if (mounted) setUser(profile);
+        })
+        .catch(error => {
+          if (mounted) setBootError(error instanceof Error ? error.message : 'Could not load user profile');
+        });
     });
 
     return () => {
       mounted = false;
-      subscription.subscription.unsubscribe();
+      subscription.unsubscribe();
     };
   }, []);
 
@@ -79,26 +87,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register: AuthContextType['register'] = async (name, email, password, role, phone, nid, address) => {
+  const register: AuthContextType['register'] = async (name, email, password, _role, phone, nid, address) => {
+    const safeRole: UserRole = PUBLIC_REGISTRATION_ROLE;
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name: name,
-          requested_role: role,
+          requested_role: PUBLIC_REGISTRATION_DB_ROLE,
         },
       },
     });
 
     if (error) return { success: false, error: error.message };
+    if (!data.user?.id) return { success: false, error: 'Supabase Auth did not return a user id.' };
 
     try {
-      const profile = await createUserProfile({ name, email, authUserId: data.user?.id, role, phone, nid, address });
+      const profile = await createUserProfile({
+        name,
+        email,
+        authUserId: data.user.id,
+        role: safeRole,
+        phone,
+        nid,
+        address,
+        emailVerified: Boolean(data.session || data.user.email_confirmed_at),
+      });
+
+      if (!data.session) {
+        setSession(null);
+        setUser(null);
+        return { success: true, user: profile, needsEmailConfirmation: true };
+      }
+
       setSession(data.session);
       setUser(profile);
       await refreshAppData();
-      void addAuditLog({ id: generateId('log'), timestamp: new Date().toISOString(), actorName: name, actorRole: role, actionType: 'Registration', details: `New ${role} registered: ${name}` });
+      void addAuditLog({ id: generateId('log'), timestamp: new Date().toISOString(), actorName: name, actorRole: safeRole, actionType: 'Registration', details: `New applicant registered: ${name}` });
       return { success: true, user: profile };
     } catch (profileError) {
       return {

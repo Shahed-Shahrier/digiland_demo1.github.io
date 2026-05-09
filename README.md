@@ -51,12 +51,13 @@ Routes are public or protected. Protected routes are wrapped with `ProtectedRout
 
 `AuthProvider` handles:
 
-- Login with email/password lookup from Supabase-backed users
+- Login with Supabase Auth email/password
 - Registration with Supabase Auth sign-up
 - Session persistence through Supabase Auth
 - Audit log entries for login/register/logout actions
 
 Important: UI roles are hints only. Real authorization must be enforced by Supabase RLS policies.
+Public registration always creates an applicant/citizen profile. Admin, reviewer/land officer, and survey officer roles must be assigned by an admin or by reviewed SQL, never by the public registration form.
 
 ## 3) Data model and persistence
 
@@ -183,9 +184,14 @@ VITE_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
 Set up Supabase:
 
 1. Review `supabase/migrations/0001_digiland_rls_policies_draft.sql`.
-2. Add or confirm a secure mapping from `public.users` to `auth.users`, such as `users.auth_user_id`.
+2. Confirm `public.users.auth_user_id uuid references auth.users(id)` exists.
 3. Apply reviewed RLS policies in Supabase SQL Editor.
 4. Use Project Settings > API to copy the Project URL and publishable key, or legacy anon key.
+5. Verify policies with:
+
+```sql
+select * from pg_policies where schemaname = 'public';
+```
 
 Run the Vite dev server:
 
@@ -222,12 +228,34 @@ Equivalent Bun commands also work (`bun install`, `bun run dev`, etc.).
 
 ## Demo accounts
 
-Demo quick-login buttons use these emails and password `demo1234`, but they only work if matching Supabase Auth users and `public.users` profiles exist:
+Demo buttons fill the email field only. Passwords are not stored in source code.
 
-- `citizen@demo.com`
-- `officer@demo.com`
-- `survey@demo.com`
-- `admin@demo.com`
+Create matching Supabase Auth users manually, then link each Auth UUID to `public.users.auth_user_id`:
+
+- `shahed.admin@digiland.demo` -> `super_admin`; set Shahed's Auth password manually to `Shahedadmin`
+- `farhana.akter@digiland.demo` -> `admin`
+- `rahim.uddin@digiland.demo` -> `survey_officer`
+- `sadia.islam@digiland.demo` -> `reviewer` (shown in the UI as land officer)
+- `nusrat.jahan@digiland.demo` -> `applicant` (shown in the UI as citizen)
+- `abdul.karim@digiland.demo` -> `applicant` (shown in the UI as citizen)
+
+Example linking SQL after creating Auth users:
+
+```sql
+update public.users
+set auth_user_id = '<auth.users.id>'
+where email = 'shahed.admin@digiland.demo';
+```
+
+Do not put demo passwords in `public.users.password_hash`; authentication uses Supabase Auth only.
+
+## Security notes
+
+- Never expose a service role key, database password, or admin API secret in Vite or GitHub Pages.
+- Public registration creates only applicant/citizen accounts.
+- Admin/officer role assignment is manual SQL for this demo unless an admin-only role management flow is added later.
+- Browser audit-log inserts are demo-only and are not trustworthy for production.
+- Document upload currently stores metadata only; Supabase Storage upload and storage policies are not implemented yet.
 
 ## Testing status
 

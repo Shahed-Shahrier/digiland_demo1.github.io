@@ -11,6 +11,7 @@ import {
   UserRole,
   VerificationNote,
 } from '@/types';
+import { dbRoleToFrontendRole, frontendRoleToDbRole, PUBLIC_REGISTRATION_ROLE } from '@/lib/roles';
 import {
   DbApplication,
   DbAuditLog,
@@ -50,18 +51,9 @@ function unwrap<T>(result: { data: T | null; error: { message: string } | null }
   return result.data as T;
 }
 
-function normalizeRole(role?: string | null): UserRole {
-  const value = (role || 'citizen').toLowerCase().replace(/[\s-]+/g, '_');
-  if (value === 'land_officer' || value === 'survey_officer' || value === 'admin') return value;
-  return 'citizen';
-}
-
-function roleToDbName(role: UserRole) {
-  return role.replace(/_/g, ' ');
-}
-
 function statusFromDb(status?: string | null): ApplicationStatus {
   const value = (status || 'Pending').toLowerCase().replace(/_/g, ' ');
+  if (value === 'draft' || value === 'submitted') return 'Pending';
   if (value === 'under review') return 'Under Review';
   if (value === 'clarification requested') return 'Clarification Requested';
   if (value === 'verified') return 'Verified';
@@ -71,6 +63,7 @@ function statusFromDb(status?: string | null): ApplicationStatus {
 }
 
 function statusToDb(status: ApplicationStatus) {
+  if (status === 'Pending') return 'submitted';
   return status.toLowerCase().replace(/ /g, '_');
 }
 
@@ -92,12 +85,42 @@ function numericId(id: string | number | undefined | null) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function parseAreaSize(value?: string | number | null) {
+  const parsed = Number(String(value || '').match(/\d+(\.\d+)?/)?.[0]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function textOrFallback(value: string | undefined | null, fallback: string) {
+  const trimmed = value?.trim();
+  return trimmed || fallback;
+}
+
+function inferDivision(district?: string | null) {
+  const value = (district || '').toLowerCase();
+  if (['dhaka', 'gazipur', 'narayanganj', 'tangail', 'kishoreganj', 'manikganj', 'munshiganj', 'narsingdi', 'faridpur', 'gopalganj', 'madaripur', 'rajbari', 'shariatpur'].includes(value)) return 'Dhaka';
+  if (['chattogram', 'comilla', 'coxsbazar', "cox's bazar", 'feni', 'noakhali', 'brahmanbaria', 'chandpur', 'lakshmipur', 'rangamati', 'bandarban', 'khagrachhari'].includes(value)) return 'Chattogram';
+  if (['rajshahi', 'bogura', 'pabna', 'sirajganj', 'natore', 'naogaon', 'chapainawabganj', 'joypurhat'].includes(value)) return 'Rajshahi';
+  if (['khulna', 'jashore', 'satkhira', 'bagerhat', 'chuadanga', 'jhenaidah', 'kushtia', 'magura', 'meherpur', 'narail'].includes(value)) return 'Khulna';
+  if (['sylhet', 'moulvibazar', 'habiganj', 'sunamganj'].includes(value)) return 'Sylhet';
+  if (['barishal', 'barguna', 'bhola', 'jhalokati', 'patuakhali', 'pirojpur'].includes(value)) return 'Barishal';
+  if (['rangpur', 'dinajpur', 'gaibandha', 'kurigram', 'lalmonirhat', 'nilphamari', 'panchagarh', 'thakurgaon'].includes(value)) return 'Rangpur';
+  if (['mymensingh', 'jamalpur', 'netrokona', 'sherpur'].includes(value)) return 'Mymensingh';
+  return 'Dhaka';
+}
+
+function documentTypeToDb(type: Application['documents'][number]['documentType']) {
+  if (type === 'National ID') return 'nid';
+  if (type === 'Tax Receipt') return 'tax_receipt';
+  if (type === 'Supporting Document') return 'supporting_document';
+  return 'land_deed';
+}
+
 function mapUser(row: DbUser, role?: string | null): User {
   return {
     id: String(row.user_id),
     name: row.full_name,
     email: row.email,
-    role: normalizeRole(role),
+    role: dbRoleToFrontendRole(role),
     phone: row.phone || undefined,
     nid: row.nid_number || undefined,
     createdAt: row.created_at,
@@ -124,6 +147,13 @@ function mapOwnership(status?: string | null): LandRecord['ownershipStatus'] {
   if (value.includes('transfer')) return 'Transferred';
   if (value.includes('gov')) return 'Government';
   return 'Active';
+}
+
+function ownershipToDb(status: LandRecord['ownershipStatus']) {
+  if (status === 'Disputed') return 'disputed';
+  if (status === 'Transferred') return 'transferred';
+  if (status === 'Government') return 'government';
+  return 'unknown';
 }
 
 function mapDocument(row: DbDocument) {
@@ -153,7 +183,7 @@ function mapReview(row: DbReview, usersById: Map<string, User>): ReviewComment {
     authorId: String(row.reviewer_id),
     authorName: author?.name || `User ${row.reviewer_id}`,
     authorRole: author?.role || 'land_officer',
-    comment: row.note,
+    comment: row.note || '',
     createdAt: row.created_at,
   };
 }
@@ -227,8 +257,8 @@ function mapApplication(
   const statusHistory = historyRows
     .filter(h => String(h.application_id) === String(row.application_id))
     .map(h => ({
-      status: statusFromDb(h.status),
-      timestamp: h.created_at,
+      status: statusFromDb(h.new_status),
+      timestamp: h.changed_at,
       actor: h.changed_by ? usersById.get(String(h.changed_by))?.name || `User ${h.changed_by}` : 'System',
     }));
 
@@ -294,7 +324,7 @@ async function loadApplications() {
     selectAll<DbDocument>('documents', 'uploaded_at'),
     selectAll<DbReview>('reviews', 'created_at'),
     selectAll<DbVerification>('verifications', 'created_at'),
-    selectAll<DbStatusHistory>('application_status_history', 'created_at'),
+    selectAll<DbStatusHistory>('application_status_history', 'changed_at'),
   ]);
   const usersById = new Map(cache.users.map(user => [user.id, user]));
   const landById = new Map(cache.landRecords.map(land => [land.id, land]));
@@ -313,10 +343,20 @@ async function loadAuditLogs() {
   return cache.auditLogs;
 }
 
+async function loadAllowed(label: string, loader: () => Promise<unknown>) {
+  try {
+    await loader();
+  } catch (error) {
+    console.warn(`${label} not loaded. This is expected if RLS blocks the current role.`, error);
+  }
+}
+
 export async function initializeAppData() {
-  await loadUsers();
-  await loadLandRecords();
-  await Promise.all([loadApplications(), loadNotifications(), loadAuditLogs()]);
+  await loadAllowed('Users', loadUsers);
+  await loadAllowed('Land records', loadLandRecords);
+  await loadAllowed('Applications', loadApplications);
+  await loadAllowed('Notifications', loadNotifications);
+  await loadAllowed('Audit logs', loadAuditLogs);
   initialized = true;
 }
 
@@ -367,8 +407,30 @@ export async function getUserProfileByAuthId(authUserId: string, email?: string)
     return getUserProfileByEmail(row.email);
   }
 
-  if (email) return getUserProfileByEmail(email);
   if (byAuthId.error) throw new Error(`Load user profile by auth id: ${byAuthId.error.message}`);
+
+  if (email) {
+    const profile = await getUserProfileByEmail(email);
+    if (!profile) return null;
+
+    const existingAuthId = unwrap<Pick<DbUser, 'auth_user_id'> | null>(
+      await supabase.from('users').select('auth_user_id').eq('email', email).is('deleted_at', null).maybeSingle(),
+      'Check demo profile auth link',
+    )?.auth_user_id;
+
+    if (!existingAuthId) {
+      unwrap(
+        await supabase
+          .from('users')
+          .update({ auth_user_id: authUserId })
+          .eq('user_id', numericId(profile.id)),
+        'Link demo profile to Supabase Auth user',
+      );
+    }
+
+    return profile;
+  }
+
   return null;
 }
 
@@ -376,44 +438,80 @@ export async function createUserProfile(input: {
   name: string;
   email: string;
   authUserId?: string;
-  role: UserRole;
+  role?: UserRole;
   phone?: string;
   nid?: string;
   address?: string;
+  emailVerified?: boolean;
 }) {
+  if (!input.authUserId) {
+    throw new Error('Create user profile: Supabase Auth user id is required');
+  }
+
+  const existing = unwrap<DbUser | null>(
+    await supabase
+      .from('users')
+      .select('*')
+      .eq('email', input.email)
+      .is('deleted_at', null)
+      .maybeSingle(),
+    'Find existing user profile',
+  );
+
+  if (existing) {
+    if (!existing.auth_user_id) {
+      unwrap(
+        await supabase
+          .from('users')
+          .update({
+            auth_user_id: input.authUserId,
+            phone: input.phone || existing.phone,
+            nid_number: input.nid || existing.nid_number,
+          })
+          .eq('user_id', existing.user_id),
+        'Link existing user profile',
+      );
+    }
+
+    const profile = await getUserProfileByEmail(existing.email);
+    if (profile) return profile;
+  }
+
   const inserted = unwrap<DbUser>(
     await supabase
       .from('users')
       .insert({
-        auth_user_id: input.authUserId || null,
+        auth_user_id: input.authUserId,
         full_name: input.name,
         email: input.email,
         phone: input.phone || null,
         nid_number: input.nid || null,
-        status: 'active',
+        status: 'pending',
+        email_verified: Boolean(input.emailVerified),
       })
       .select()
       .single(),
     'Create user profile',
   );
 
+  const safeDbRole = frontendRoleToDbRole(PUBLIC_REGISTRATION_ROLE);
   const roleRow = unwrap<DbRole | null>(
     await supabase
       .from('roles')
       .select('*')
-      .ilike('role_name', roleToDbName(input.role))
+      .eq('role_name', safeDbRole)
       .maybeSingle(),
     'Load role',
   );
 
   if (roleRow) {
-    unwrap(
-      await supabase.from('user_roles').insert({ user_id: inserted.user_id, role_id: roleRow.role_id }),
-      'Assign role',
-    );
+    const assignment = await supabase.from('user_roles').insert({ user_id: inserted.user_id, role_id: roleRow.role_id });
+    if (assignment.error) {
+      console.warn('Applicant role assignment was not allowed by the backend. Profile will still use citizen UI defaults.', assignment.error);
+    }
   }
 
-  const profile = mapUser(inserted, roleRow?.role_name || input.role);
+  const profile = mapUser(inserted, roleRow?.role_name || safeDbRole);
   cache.users = [profile, ...cache.users.filter(user => user.id !== profile.id)];
   return profile;
 }
@@ -456,7 +554,7 @@ export const deleteUser = async (id: string) => {
   unwrap(
     await supabase
       .from('users')
-      .update({ status: 'deleted', deleted_at: new Date().toISOString() })
+      .update({ deleted_at: new Date().toISOString() })
       .eq('user_id', userId),
     'Soft delete user',
   );
@@ -467,17 +565,25 @@ export const deleteUser = async (id: string) => {
 export const getLandRecords = () => cache.landRecords;
 
 export const addLandRecord = async (record: LandRecord) => {
+  const fallbackKhatian = textOrFallback(record.holdingNumber, `KH-${record.plotNumber || Date.now()}`);
+  const district = textOrFallback(record.district, 'Dhaka');
+  const upazila = textOrFallback(record.upazila, 'Unknown Upazila');
+  const mouza = textOrFallback(record.mouza, 'Unknown Mouza');
+
   const inserted = unwrap<DbLandParcel>(
     await supabase
       .from('land_parcels')
       .insert({
-        plot_number: record.plotNumber,
+        plot_number: textOrFallback(record.plotNumber, `PLOT-${Date.now()}`),
         holding_number: record.holdingNumber || null,
-        mouza: record.mouza || null,
-        district: record.district || null,
-        upazila: record.upazila || null,
-        area_size: record.landSize || null,
-        ownership_status: record.ownershipStatus.toLowerCase(),
+        khatian_number: fallbackKhatian,
+        mouza,
+        division: inferDivision(district),
+        district,
+        upazila,
+        area_size: parseAreaSize(record.landSize),
+        land_type: 'other',
+        ownership_status: ownershipToDb(record.ownershipStatus),
         current_status: 'active',
       })
       .select()
@@ -500,11 +606,13 @@ export const updateLandRecord = async (id: string, updates: Partial<LandRecord>)
       .update({
         plot_number: updates.plotNumber,
         holding_number: updates.holdingNumber,
+        khatian_number: updates.holdingNumber,
         mouza: updates.mouza,
+        division: updates.district ? inferDivision(updates.district) : undefined,
         district: updates.district,
         upazila: updates.upazila,
-        area_size: updates.landSize,
-        ownership_status: updates.ownershipStatus?.toLowerCase(),
+        area_size: updates.landSize ? parseAreaSize(updates.landSize) : undefined,
+        ownership_status: updates.ownershipStatus ? ownershipToDb(updates.ownershipStatus) : undefined,
       })
       .eq('land_id', landId)
       .select()
@@ -525,9 +633,9 @@ export const deleteLandRecord = async (id: string) => {
   unwrap(
     await supabase
       .from('land_parcels')
-      .update({ current_status: 'archived' })
+      .update({ legal_remarks: `Archived from Digi-Land demo at ${new Date().toISOString()}` })
       .eq('land_id', landId),
-    'Archive land parcel',
+    'Mark land parcel archived',
   );
   cache.landRecords = cache.landRecords.filter(record => record.id !== id);
 };
@@ -585,9 +693,9 @@ export const addApplication = async (app: Application) => {
         application_id: inserted.application_id,
         user_id: applicantId,
         land_id: landId,
-        document_type: document.documentType.toLowerCase().replace(/ /g, '_'),
+        document_type: documentTypeToDb(document.documentType),
         file_name: document.name,
-        file_path: document.name,
+        file_path: `metadata-only/${inserted.application_id}/${document.name}`,
         mime_type: document.type,
         file_size: document.size,
         version_no: 1,
@@ -650,9 +758,10 @@ export const changeApplicationStatus = async (id: string, status: ApplicationSta
   unwrap(
     await supabase.from('application_status_history').insert({
       application_id: dbApplication.application_id,
-      status: statusToDb(status),
+      old_status: dbApplication.current_status,
+      new_status: statusToDb(status),
       changed_by: numericId(actorUser?.id),
-      created_at: new Date().toISOString(),
+      changed_at: new Date().toISOString(),
     }),
     'Insert application status history',
   );
@@ -678,7 +787,7 @@ export const addComment = async (applicationId: string, comment: ReviewComment) 
         application_id: dbApplication.application_id,
         reviewer_id: reviewerId,
         note: comment.comment,
-        review_type: 'comment',
+        review_type: 'admin',
       })
       .select()
       .single(),
@@ -789,7 +898,7 @@ export const addAuditLog = async (log: AuditLog) => {
       .insert({
         actor_user_id: numericId(actorId),
         action_type: log.actionType,
-        target_table: log.applicationId ? 'applications' : null,
+        target_table: log.applicationId ? 'applications' : 'auth_sessions',
         target_id: numericId(log.applicationId),
         new_values: { details: log.details, application_id: log.applicationId || null },
       })
