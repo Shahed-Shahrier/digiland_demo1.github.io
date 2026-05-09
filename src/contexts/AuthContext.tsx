@@ -1,9 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { User, UserRole } from '@/types';
-import { addAuditLog, createUserProfile, generateId, getUserProfileByAuthId, initializeAppData, refreshAppData } from '@/services/storageService';
+import { addAuditLog, generateId, getUserProfileByAuthId, initializeAppData, refreshAppData } from '@/services/storageService';
 import { supabase } from '@/integrations/supabase/client';
-import { PUBLIC_REGISTRATION_DB_ROLE, PUBLIC_REGISTRATION_ROLE } from '@/lib/roles';
 
 interface AuthContextType {
   user: User | null;
@@ -87,51 +86,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register: AuthContextType['register'] = async (name, email, password, _role, phone, nid, address) => {
-    const safeRole: UserRole = PUBLIC_REGISTRATION_ROLE;
+  const register: AuthContextType['register'] = async (
+    name,
+    email,
+    password,
+    _role,
+    phone,
+    _nid,
+    _address,
+  ) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name: name,
-          requested_role: PUBLIC_REGISTRATION_DB_ROLE,
+          phone,
         },
       },
     });
 
-    if (error) return { success: false, error: error.message };
-    if (!data.user?.id) return { success: false, error: 'Supabase Auth did not return a user id.' };
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    if (!data.user?.id) {
+      return { success: false, error: 'Auth account was not created.' };
+    }
+
+    if (!data.session) {
+      return {
+        success: true,
+        error: 'Account created. Please confirm your email, then sign in.',
+      };
+    }
 
     try {
-      const profile = await createUserProfile({
-        name,
-        email,
-        authUserId: data.user.id,
-        role: safeRole,
-        phone,
-        nid,
-        address,
-        emailVerified: Boolean(data.session || data.user.email_confirmed_at),
-      });
+      await refreshAppData();
 
-      if (!data.session) {
-        setSession(null);
-        setUser(null);
-        return { success: true, user: profile, needsEmailConfirmation: true };
+      const profile = await getUserProfileByAuthId(
+        data.user.id,
+        data.user.email,
+      );
+
+      if (!profile) {
+        return {
+          success: false,
+          error: 'Account created, but profile was not found. Please try signing in.',
+        };
       }
 
       setSession(data.session);
       setUser(profile);
-      await refreshAppData();
-      void addAuditLog({ id: generateId('log'), timestamp: new Date().toISOString(), actorName: name, actorRole: safeRole, actionType: 'Registration', details: `New applicant registered: ${name}` });
+
       return { success: true, user: profile };
     } catch (profileError) {
       return {
         success: false,
-        error: profileError instanceof Error
-          ? `Auth account created, but profile setup failed: ${profileError.message}`
-          : 'Auth account created, but profile setup failed',
+        error:
+          profileError instanceof Error
+            ? profileError.message
+            : 'Account created, but profile could not be loaded.',
       };
     }
   };

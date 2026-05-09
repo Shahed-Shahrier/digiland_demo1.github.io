@@ -22,10 +22,10 @@ export default function RegisterPage() {
     e.preventDefault();
     const result = await register(name, email, password, 'citizen', phone, nid);
     if (result.success) {
-      if (result.needsEmailConfirmation) {
+      if (result.needsEmailConfirmation || !result.user) {
         toast({
           title: 'Check your email',
-          description: 'Confirm your email address, then sign in to Digi-Land.',
+          description: result.error || 'Confirm your email address, then sign in to Digi-Land.',
         });
         navigate('/login');
         return;
