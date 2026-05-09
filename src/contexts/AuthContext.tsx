@@ -21,6 +21,22 @@ async function profileForSession(session: Session | null) {
   return getUserProfileByAuthId(session.user.id, session.user.email);
 }
 
+async function registrationFieldExists(column: 'phone' | 'nid_number', value: string) {
+  const { data, error } = await supabase
+    .from('users')
+    .select('user_id')
+    .eq(column, value)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) {
+    console.warn(`Could not pre-check ${column} uniqueness. Backend constraints should still enforce it.`, error);
+    return false;
+  }
+
+  return Boolean(data);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -92,16 +108,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password,
     _role,
     phone,
-    _nid,
+    nid,
     _address,
   ) => {
+    const normalizedPhone = phone?.trim();
+    const normalizedNid = nid?.trim();
+
+    if (!normalizedPhone || normalizedPhone.length < 7) {
+      return { success: false, error: 'A valid unique phone number is required.' };
+    }
+
+    if (!normalizedNid) {
+      return { success: false, error: 'A unique NID number is required.' };
+    }
+
+    const [phoneExists, nidExists] = await Promise.all([
+      registrationFieldExists('phone', normalizedPhone),
+      registrationFieldExists('nid_number', normalizedNid),
+    ]);
+
+    if (phoneExists) {
+      return { success: false, error: 'This phone number is already registered.' };
+    }
+
+    if (nidExists) {
+      return { success: false, error: 'This NID number is already registered.' };
+    }
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name: name,
-          phone,
+          phone: normalizedPhone,
+          nid_number: normalizedNid,
         },
       },
     });
