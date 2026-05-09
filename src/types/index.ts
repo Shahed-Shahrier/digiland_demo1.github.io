@@ -78,7 +78,9 @@ export interface Application {
   mouza: string;
   landSize: string;
   currentOwner: string;
+  currentOwnerId?: string;
   proposedNewOwner: string;
+  proposedNewOwnerId?: string;
   transferType: TransferType;
   reason: string;
   deedReference: string;
@@ -112,4 +114,16 @@ export interface AuditLog {
   actionType: string;
   applicationId?: string;
   details: string;
+}
+
+export interface Clarification {
+  id: string;
+  applicationId: string;
+  requestedBy: string;
+  requestMessage: string;
+  respondedBy?: string;
+  responseMessage?: string;
+  status: 'open' | 'responded' | 'closed';
+  requestedAt: string;
+  respondedAt?: string;
 }

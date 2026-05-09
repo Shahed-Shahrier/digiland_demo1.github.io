@@ -25,7 +25,7 @@ export default function NewApplicationPage() {
     applicantEmail: user?.email || '', applicantAddress: user?.address || '',
     plotNumber: '', holdingNumber: '', district: '', upazila: '', mouza: '', landSize: '',
     currentOwnerNid: '', currentOwner: '',
-    proposedNewOwnerNid: '', proposedNewOwner: '',
+    proposedNewOwnerNid: '', proposedNewOwner: '', proposedNewOwnerId: '',
     transferType: 'Sale' as TransferType,
     reason: '', deedReference: '', remarks: '',
   });
@@ -63,6 +63,7 @@ export default function NewApplicationPage() {
           setCurrentOwnerLookup('found');
         } else {
           set('proposedNewOwner', found.name);
+          set('proposedNewOwnerId', found.id);
           setNewOwnerLookup('found');
         }
       } else {
@@ -71,6 +72,7 @@ export default function NewApplicationPage() {
           setCurrentOwnerLookup('not_found');
         } else {
           set('proposedNewOwner', '');
+          set('proposedNewOwnerId', '');
           setNewOwnerLookup('not_found');
         }
       }
@@ -80,6 +82,7 @@ export default function NewApplicationPage() {
         setCurrentOwnerLookup('not_found');
       } else {
         set('proposedNewOwner', '');
+        set('proposedNewOwnerId', '');
         setNewOwnerLookup('not_found');
       }
       toast({
@@ -156,7 +159,8 @@ export default function NewApplicationPage() {
         plotNumber: form.plotNumber, holdingNumber: form.holdingNumber,
         district: form.district, upazila: form.upazila, mouza: form.mouza,
         landSize: form.landSize, currentOwner: form.currentOwner,
-        proposedNewOwner: form.proposedNewOwner, transferType: form.transferType,
+        proposedNewOwner: form.proposedNewOwner, proposedNewOwnerId: form.proposedNewOwnerId,
+        transferType: form.transferType,
         reason: form.reason, deedReference: form.deedReference, remarks: form.remarks,
         documents, status: 'Pending',
         comments: [], verificationNotes: [],
@@ -360,7 +364,7 @@ export default function NewApplicationPage() {
           )}
           {step === 4 && (
             <>
-              <p className="text-sm text-muted-foreground mb-4">Simulate document uploads. Click to add each required document.</p>
+              <p className="text-sm text-muted-foreground mb-4">Add document metadata for each required document. File storage is not enabled in this backend schema.</p>
               {(['Land Deed', 'National ID', 'Tax Receipt', 'Supporting Document'] as const).map(docType => {
                 const uploaded = documents.find(d => d.documentType === docType);
                 return (
@@ -370,7 +374,7 @@ export default function NewApplicationPage() {
                       {uploaded && <p className="text-xs text-muted-foreground">{uploaded.name} — {(uploaded.size / 1024).toFixed(0)} KB</p>}
                     </div>
                     <Button size="sm" variant={uploaded ? 'secondary' : 'default'} disabled={!!uploaded} onClick={() => addDoc(docType)}>
-                      {uploaded ? 'Uploaded' : 'Upload'}
+                      {uploaded ? 'Added' : 'Add metadata'}
                     </Button>
                   </div>
                 );

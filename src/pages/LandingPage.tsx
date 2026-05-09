@@ -52,7 +52,7 @@ export default function LandingPage() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
             {[
               { icon: Search, title: 'Land Search', desc: 'Search records by plot or holding number instantly.' },
-              { icon: FileText, title: 'Digital Applications', desc: 'Submit mutation applications with document uploads.' },
+              { icon: FileText, title: 'Digital Applications', desc: 'Submit mutation applications with document metadata.' },
               { icon: Shield, title: 'Officer Verification', desc: 'Multi-step review by land and survey officers.' },
               { icon: CheckCircle2, title: 'Status Tracking', desc: 'Real-time updates on your application progress.' },
             ].map(f => (

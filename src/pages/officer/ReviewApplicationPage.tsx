@@ -1,13 +1,14 @@
 import { useParams } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getApplicationById, changeApplicationStatus, addComment, addAuditLog, addNotification, generateId, updateApplication } from '@/services/storageService';
+import { getApplicationById, changeApplicationStatus, addComment, addAuditLog, addNotification, generateId, updateApplication, getUsersByRole, addClarification } from '@/services/storageService';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { ApplicationTimeline } from '@/components/ApplicationTimeline';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { FileText, User, MapPin } from 'lucide-react';
 import { ApplicationStatus } from '@/types';
@@ -17,6 +18,8 @@ export default function ReviewApplicationPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [comment, setComment] = useState('');
+  const surveyOfficers = getUsersByRole('survey_officer');
+  const [surveyOfficerId, setSurveyOfficerId] = useState('');
   const [, setRefresh] = useState(0);
 
   const app = getApplicationById(id || '');
@@ -31,10 +34,12 @@ export default function ReviewApplicationPage() {
       }
       await addAuditLog({ id: generateId('log'), timestamp: now, actorName: user.name, actorRole: user.role, actionType: label, applicationId: app.id, details: `${label}: ${app.id}` });
       await addNotification({ id: generateId('notif'), userId: app.applicantId, title: label, message: `Your application ${app.id} status: ${status}`, type: status === 'Approved' ? 'success' : status === 'Rejected' ? 'error' : 'info', read: false, applicationId: app.id, createdAt: now });
-      // Assign survey officer if moving to Under Review
-      if (status === 'Under Review') {
-        await updateApplication(app.id, { assignedSurveyOfficerId: 'user-survey-1' });
-        await addNotification({ id: generateId('notif'), userId: 'user-survey-1', title: 'Verification Assigned', message: `You have been assigned to verify ${app.id}.`, type: 'info', read: false, applicationId: app.id, createdAt: now });
+      if (status === 'Under Review' && surveyOfficerId) {
+        await updateApplication(app.id, { assignedSurveyOfficerId: surveyOfficerId });
+        await addNotification({ id: generateId('notif'), userId: surveyOfficerId, title: 'Verification Assigned', message: `You have been assigned to verify ${app.id}.`, type: 'info', read: false, applicationId: app.id, createdAt: now });
+      }
+      if (status === 'Clarification Requested') {
+        await addClarification(app.id, user.id, comment || `Clarification requested for ${app.id}`);
       }
       setComment('');
       toast({ title: label, description: `Application ${app.id} updated.` });
@@ -125,6 +130,18 @@ export default function ReviewApplicationPage() {
             <CardHeader><CardTitle>Take Action</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <Textarea placeholder="Add a comment (optional)..." value={comment} onChange={e => setComment(e.target.value)} />
+              {app.status === 'Pending' && (
+                <Select value={surveyOfficerId} onValueChange={setSurveyOfficerId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Assign survey officer (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {surveyOfficers.map(officer => (
+                      <SelectItem key={officer.id} value={officer.id}>{officer.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <div className="flex flex-wrap gap-2">
                 {app.status === 'Pending' && <Button onClick={() => doAction('Under Review', 'Status Change')}>Start Review</Button>}
                 {(app.status === 'Under Review' || app.status === 'Verified') && (

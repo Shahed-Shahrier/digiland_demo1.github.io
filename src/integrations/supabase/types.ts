@@ -23,6 +23,39 @@ export interface DbUserRole {
   role_id: number;
 }
 
+export interface DbAddress {
+  address_id: number;
+  user_id: number;
+  division: string;
+  district: string;
+  upazila: string | null;
+  union_name: string | null;
+  village: string | null;
+  postal_code: string | null;
+  address_type: string;
+  created_at: string;
+}
+
+export interface DbLandOwner {
+  id: number;
+  land_id: number;
+  user_id: number;
+  ownership_percentage: number | string;
+  ownership_source: string | null;
+  start_date: string;
+  end_date: string | null;
+  is_current_owner: boolean;
+  created_at: string;
+}
+
+export interface DbApplicationNewOwner {
+  id: number;
+  application_id: number;
+  user_id: number;
+  ownership_percentage: number | string;
+  created_at: string;
+}
+
 export interface DbLandParcel {
   land_id: number;
   plot_number: string;
@@ -132,5 +165,29 @@ export interface DbAuditLog {
   new_values: Json | null;
   ip_address: string | null;
   user_agent: string | null;
+  created_at: string;
+}
+
+export interface DbClarification {
+  clarification_id: number;
+  application_id: number;
+  requested_by: number;
+  request_message: string;
+  responded_by: number | null;
+  response_message: string | null;
+  status: string;
+  requested_at: string;
+  responded_at: string | null;
+}
+
+export interface DbPayment {
+  payment_id: number;
+  application_id: number;
+  amount: number | string;
+  currency: string;
+  provider: string | null;
+  transaction_reference: string | null;
+  status: string;
+  paid_at: string | null;
   created_at: string;
 }

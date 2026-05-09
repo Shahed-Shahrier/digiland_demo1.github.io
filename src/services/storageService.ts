@@ -3,6 +3,7 @@ import {
   AuditLog,
   Application,
   ApplicationStatus,
+  Clarification,
   LandRecord,
   Notification,
   ReviewComment,
@@ -14,8 +15,12 @@ import {
 import { dbRoleToFrontendRole, frontendRoleToDbRole, PUBLIC_REGISTRATION_ROLE } from '@/lib/roles';
 import {
   DbApplication,
+  DbApplicationNewOwner,
+  DbAddress,
   DbAuditLog,
+  DbClarification,
   DbDocument,
+  DbLandOwner,
   DbLandParcel,
   DbNotification,
   DbReview,
@@ -32,6 +37,7 @@ type Cache = {
   applications: Application[];
   notifications: Notification[];
   auditLogs: AuditLog[];
+  clarifications: Clarification[];
 };
 
 const cache: Cache = {
@@ -40,6 +46,7 @@ const cache: Cache = {
   applications: [],
   notifications: [],
   auditLogs: [],
+  clarifications: [],
 };
 
 let initialized = false;
@@ -115,7 +122,14 @@ function documentTypeToDb(type: Application['documents'][number]['documentType']
   return 'land_deed';
 }
 
-function mapUser(row: DbUser, role?: string | null): User {
+function mapAddress(row?: DbAddress) {
+  if (!row) return undefined;
+  return [row.village, row.union_name, row.upazila, row.district, row.division, row.postal_code]
+    .filter(Boolean)
+    .join(', ');
+}
+
+function mapUser(row: DbUser, role?: string | null, address?: DbAddress): User {
   return {
     id: String(row.user_id),
     name: row.full_name,
@@ -123,6 +137,7 @@ function mapUser(row: DbUser, role?: string | null): User {
     role: dbRoleToFrontendRole(role),
     phone: row.phone || undefined,
     nid: row.nid_number || undefined,
+    address: mapAddress(address),
     createdAt: row.created_at,
   };
 }
@@ -243,6 +258,20 @@ function mapAuditLog(row: DbAuditLog, usersById: Map<string, User>): AuditLog {
   };
 }
 
+function mapClarification(row: DbClarification): Clarification {
+  return {
+    id: String(row.clarification_id),
+    applicationId: String(row.application_id),
+    requestedBy: String(row.requested_by),
+    requestMessage: row.request_message,
+    respondedBy: row.responded_by ? String(row.responded_by) : undefined,
+    responseMessage: row.response_message || undefined,
+    status: row.status === 'responded' || row.status === 'closed' ? row.status : 'open',
+    requestedAt: row.requested_at,
+    respondedAt: row.responded_at || undefined,
+  };
+}
+
 function mapApplication(
   row: DbApplication,
   usersById: Map<string, User>,
@@ -251,9 +280,12 @@ function mapApplication(
   reviews: DbReview[],
   verifications: DbVerification[],
   historyRows: DbStatusHistory[],
+  newOwners: DbApplicationNewOwner[],
 ): Application {
   const applicant = usersById.get(String(row.applicant_user_id));
   const land = landById.get(String(row.land_id));
+  const newOwner = newOwners.find(owner => String(owner.application_id) === String(row.application_id));
+  const proposedOwner = newOwner ? usersById.get(String(newOwner.user_id)) : undefined;
   const statusHistory = historyRows
     .filter(h => String(h.application_id) === String(row.application_id))
     .map(h => ({
@@ -277,7 +309,8 @@ function mapApplication(
     mouza: land?.mouza || '',
     landSize: land?.landSize || '',
     currentOwner: land?.ownerName || '',
-    proposedNewOwner: '',
+    proposedNewOwner: proposedOwner?.name || '',
+    proposedNewOwnerId: proposedOwner?.id,
     transferType: transferFromDb(row.transfer_type),
     reason: row.cancellation_reason || row.rejection_reason || '',
     deedReference: '',
@@ -300,35 +333,47 @@ async function selectAll<T>(table: string, orderColumn?: string) {
 }
 
 async function loadUsers() {
-  const [users, roles, userRoles] = await Promise.all([
+  const [users, roles, userRoles, addresses] = await Promise.all([
     selectAll<DbUser>('users', 'created_at'),
     selectAll<DbRole>('roles'),
     selectAll<DbUserRole>('user_roles'),
+    selectAll<DbAddress>('addresses', 'created_at'),
   ]);
 
   const rolesById = new Map(roles.map(role => [String(role.role_id), role.role_name]));
   const roleByUserId = new Map(userRoles.map(row => [String(row.user_id), rolesById.get(String(row.role_id))]));
-  cache.users = users.filter(row => !row.deleted_at).map(row => mapUser(row, roleByUserId.get(String(row.user_id))));
+  const addressByUserId = new Map(addresses.map(row => [String(row.user_id), row]));
+  cache.users = users.filter(row => !row.deleted_at).map(row => mapUser(row, roleByUserId.get(String(row.user_id)), addressByUserId.get(String(row.user_id))));
   return cache.users;
 }
 
 async function loadLandRecords() {
-  const parcels = await selectAll<DbLandParcel>('land_parcels', 'created_at');
-  cache.landRecords = parcels.map(parcel => mapLandRecord(parcel));
+  const [parcels, landOwners] = await Promise.all([
+    selectAll<DbLandParcel>('land_parcels', 'created_at'),
+    selectAll<DbLandOwner>('land_owners', 'created_at'),
+  ]);
+  const usersById = new Map(cache.users.map(user => [user.id, user]));
+  const currentOwnerByLandId = new Map(
+    landOwners
+      .filter(owner => owner.is_current_owner && !owner.end_date)
+      .map(owner => [String(owner.land_id), usersById.get(String(owner.user_id))?.name || `User ${owner.user_id}`]),
+  );
+  cache.landRecords = parcels.map(parcel => mapLandRecord(parcel, currentOwnerByLandId.get(String(parcel.land_id))));
   return cache.landRecords;
 }
 
 async function loadApplications() {
-  const [applications, documents, reviews, verifications, history] = await Promise.all([
+  const [applications, documents, reviews, verifications, history, newOwners] = await Promise.all([
     selectAll<DbApplication>('applications', 'created_at'),
     selectAll<DbDocument>('documents', 'uploaded_at'),
     selectAll<DbReview>('reviews', 'created_at'),
     selectAll<DbVerification>('verifications', 'created_at'),
     selectAll<DbStatusHistory>('application_status_history', 'changed_at'),
+    selectAll<DbApplicationNewOwner>('application_new_owners', 'created_at'),
   ]);
   const usersById = new Map(cache.users.map(user => [user.id, user]));
   const landById = new Map(cache.landRecords.map(land => [land.id, land]));
-  cache.applications = applications.map(app => mapApplication(app, usersById, landById, documents, reviews, verifications, history));
+  cache.applications = applications.map(app => mapApplication(app, usersById, landById, documents, reviews, verifications, history, newOwners));
   return cache.applications;
 }
 
@@ -341,6 +386,11 @@ async function loadAuditLogs() {
   const usersById = new Map(cache.users.map(user => [user.id, user]));
   cache.auditLogs = (await selectAll<DbAuditLog>('audit_logs', 'created_at')).map(row => mapAuditLog(row, usersById));
   return cache.auditLogs;
+}
+
+async function loadClarifications() {
+  cache.clarifications = (await selectAll<DbClarification>('clarifications', 'requested_at')).map(mapClarification);
+  return cache.clarifications;
 }
 
 async function loadAllowed(label: string, loader: () => Promise<unknown>) {
@@ -357,6 +407,7 @@ export async function initializeAppData() {
   await loadAllowed('Applications', loadApplications);
   await loadAllowed('Notifications', loadNotifications);
   await loadAllowed('Audit logs', loadAuditLogs);
+  await loadAllowed('Clarifications', loadClarifications);
   initialized = true;
 }
 
@@ -539,6 +590,8 @@ export const getUsers = () => cache.users;
 
 export const getUserById = (id: string) => getUsers().find(u => u.id === id) || null;
 
+export const getUsersByRole = (role: UserRole) => getUsers().filter(user => user.role === role);
+
 export const addUser = createUserProfile;
 
 export const updateUser = async (id: string, updates: Partial<User>) => {
@@ -705,6 +758,18 @@ export const addApplication = async (app: Application) => {
     'Create application',
   );
 
+  const proposedNewOwnerId = numericId(app.proposedNewOwnerId);
+  if (proposedNewOwnerId) {
+    unwrap(
+      await supabase.from('application_new_owners').insert({
+        application_id: inserted.application_id,
+        user_id: proposedNewOwnerId,
+        ownership_percentage: 100,
+      }),
+      'Create application new owner',
+    );
+  }
+
   for (const document of app.documents) {
     unwrap(
       await supabase.from('documents').insert({
@@ -817,6 +882,37 @@ export const addComment = async (applicationId: string, comment: ReviewComment) 
     const mapped = mapReview(inserted, new Map(cache.users.map(user => [user.id, user])));
     cache.applications = cache.applications.map(item => item.id === app.id ? { ...item, comments: [...item.comments, mapped] } : item);
   }
+};
+
+export const getClarifications = () => cache.clarifications;
+
+export const addClarification = async (applicationId: string, requestedBy: string, requestMessage: string) => {
+  const dbApplication = unwrap<DbApplication | null>(
+    await supabase.from('applications').select('*').eq('application_number', applicationId).maybeSingle(),
+    'Find application for clarification',
+  );
+  if (!dbApplication) throw new Error(`Add clarification: could not find application ${applicationId}`);
+
+  const requesterId = numericId(requestedBy);
+  if (!requesterId) throw new Error(`Add clarification: invalid requester id ${requestedBy}`);
+
+  const inserted = unwrap<DbClarification>(
+    await supabase
+      .from('clarifications')
+      .insert({
+        application_id: dbApplication.application_id,
+        requested_by: requesterId,
+        request_message: requestMessage,
+        status: 'open',
+      })
+      .select()
+      .single(),
+    'Create clarification',
+  );
+
+  const mapped = mapClarification(inserted);
+  cache.clarifications = [mapped, ...cache.clarifications];
+  return mapped;
 };
 
 export const addVerificationNote = async (applicationId: string, note: VerificationNote) => {
