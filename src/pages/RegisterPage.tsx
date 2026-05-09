@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { UserRole } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -14,18 +12,26 @@ export default function RegisterPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<UserRole>('citizen');
   const [phone, setPhone] = useState('');
+  const [nid, setNid] = useState('');
   const { register } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = await register(name, email, password, role, phone);
+    const result = await register(name, email, password, 'citizen', phone, nid);
     if (result.success) {
-      const paths = { citizen: '/citizen', land_officer: '/officer', survey_officer: '/survey', admin: '/admin' };
-      navigate(paths[result.user?.role || role]);
+      if (result.needsEmailConfirmation) {
+        toast({
+          title: 'Check your email',
+          description: 'Confirm your email address, then sign in to Digi-Land.',
+        });
+        navigate('/login');
+        return;
+      }
+
+      navigate('/citizen');
     } else {
       toast({ title: 'Registration Failed', description: result.error, variant: 'destructive' });
     }
@@ -60,16 +66,8 @@ export default function RegisterPage() {
               <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="01XXXXXXXXX" />
             </div>
             <div className="space-y-2">
-              <Label>Role</Label>
-              <Select value={role} onValueChange={v => setRole(v as UserRole)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="citizen">Citizen</SelectItem>
-                  <SelectItem value="land_officer">Land Officer</SelectItem>
-                  <SelectItem value="survey_officer">Survey Officer</SelectItem>
-                  <SelectItem value="admin">Administrator</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>NID Number</Label>
+              <Input value={nid} onChange={e => setNid(e.target.value)} placeholder="Optional" />
             </div>
             <Button type="submit" className="w-full">Register</Button>
           </form>

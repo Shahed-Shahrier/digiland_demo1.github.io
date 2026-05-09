@@ -35,6 +35,9 @@ export interface DbLandParcel {
   union_name: string | null;
   village: string | null;
   area_size: number | string | null;
+  land_type?: string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   ownership_status: string | null;
   current_status: string | null;
   legal_remarks: string | null;
@@ -64,9 +67,9 @@ export interface DbApplication {
 
 export interface DbDocument {
   document_id: number;
-  application_id: number | null;
-  user_id: number | null;
-  land_id: number | null;
+  application_id: number;
+  user_id: number;
+  land_id: number;
   document_type: string;
   file_name: string;
   file_path: string | null;
@@ -82,7 +85,7 @@ export interface DbReview {
   review_id: number;
   application_id: number;
   reviewer_id: number;
-  note: string;
+  note: string | null;
   review_type: string | null;
   created_at: string;
 }
@@ -90,7 +93,7 @@ export interface DbReview {
 export interface DbVerification {
   verification_id: number;
   application_id: number;
-  land_id: number | null;
+  land_id: number;
   survey_officer_id: number;
   visit_date: string | null;
   geo_verified: boolean | null;
@@ -102,10 +105,10 @@ export interface DbVerification {
 export interface DbStatusHistory {
   history_id?: number;
   application_id: number;
-  status: string;
+  old_status: string | null;
+  new_status: string;
   changed_by: number | null;
-  note?: string | null;
-  created_at: string;
+  changed_at: string;
 }
 
 export interface DbNotification {
@@ -123,7 +126,7 @@ export interface DbAuditLog {
   log_id: number;
   actor_user_id: number | null;
   action_type: string;
-  target_table: string | null;
+  target_table: string;
   target_id: number | null;
   old_values: Json | null;
   new_values: Json | null;
