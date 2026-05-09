@@ -394,22 +394,29 @@ export async function getUserProfileByEmail(email: string) {
   return mapUser(row, roleName);
 }
 
-export async function getUserProfileByNid(nid: string) {
+export async function getUserProfileByNid(nid: string) export async function getUserProfileByNid(nid: string) {
   const normalizedNid = nid.trim();
   if (!normalizedNid) return null;
 
-  const result = await supabase
-    .from('users')
-    .select('*')
-    .eq('nid_number', normalizedNid)
-    .is('deleted_at', null)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc('find_citizen_by_nid', {
+    p_nid: normalizedNid,
+  });
 
-  const row = unwrap<DbUser | null>(result, 'Search user by NID');
+  if (error) {
+    throw new Error(`Search user by NID: ${error.message}`);
+  }
+
+  const row = Array.isArray(data) ? data[0] : null;
   if (!row) return null;
 
-  const profile = await getUserProfileByEmail(row.email);
-  return profile || mapUser(row);
+  return {
+    id: String(row.user_id),
+    name: row.full_name,
+    email: row.email || '',
+    role: 'citizen' as UserRole,
+    nid: row.nid_number || undefined,
+    createdAt: new Date().toISOString(),
+  };
 }
 
 export async function getUserProfileByAuthId(authUserId: string, email?: string) {
