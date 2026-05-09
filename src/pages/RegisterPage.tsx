@@ -20,7 +20,20 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = await register(name, email, password, 'citizen', phone, nid);
+    const normalizedPhone = phone.trim();
+    const normalizedNid = nid.trim();
+
+    if (!normalizedPhone || normalizedPhone.length < 7) {
+      toast({ title: 'Registration Failed', description: 'Enter a unique phone number with at least 7 digits.', variant: 'destructive' });
+      return;
+    }
+
+    if (!normalizedNid) {
+      toast({ title: 'Registration Failed', description: 'Enter a unique NID number.', variant: 'destructive' });
+      return;
+    }
+
+    const result = await register(name.trim(), email.trim(), password, 'citizen', normalizedPhone, normalizedNid);
     if (result.success) {
       if (result.needsEmailConfirmation || !result.user) {
         toast({
@@ -63,11 +76,11 @@ export default function RegisterPage() {
             </div>
             <div className="space-y-2">
               <Label>Phone</Label>
-              <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="01XXXXXXXXX" />
+              <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="01XXXXXXXXX" inputMode="tel" minLength={7} required />
             </div>
             <div className="space-y-2">
               <Label>NID Number</Label>
-              <Input value={nid} onChange={e => setNid(e.target.value)} placeholder="Optional" />
+              <Input value={nid} onChange={e => setNid(e.target.value)} placeholder="Required" inputMode="numeric" required />
             </div>
             <Button type="submit" className="w-full">Register</Button>
           </form>
