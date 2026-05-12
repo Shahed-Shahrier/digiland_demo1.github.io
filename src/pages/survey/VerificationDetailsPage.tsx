@@ -1,26 +1,31 @@
 import { useParams } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getApplicationById, addVerificationNote, changeApplicationStatus, addAuditLog, addNotification, generateId } from '@/services/storageService';
+import { downloadApplicationDocument, getApplicationById, addVerificationNote, changeApplicationStatus, addAuditLog, addNotification, generateId, refreshAppData } from '@/services/storageService';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { MapPin, FileText } from 'lucide-react';
+import { MapPin, FileText, Loader2 } from 'lucide-react';
 
 export default function VerificationDetailsPage() {
   const { id } = useParams();
   const { user } = useAuth();
   const { toast } = useToast();
   const [findings, setFindings] = useState('');
+  const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
   const [, setRefresh] = useState(0);
 
   const app = getApplicationById(id || '');
   if (!app || !user) return <DashboardLayout><p className="text-muted-foreground">Case not found.</p></DashboardLayout>;
 
   const alreadyVerified = app.verificationNotes.some(v => v.isVerified);
+
+  useEffect(() => {
+    void refreshAppData().then(() => setRefresh(refresh => refresh + 1));
+  }, [id]);
 
   const handleVerify = async () => {
     const now = new Date().toISOString();
@@ -29,12 +34,35 @@ export default function VerificationDetailsPage() {
       await changeApplicationStatus(app.id, 'Verified', user.name);
       await addAuditLog({ id: generateId('log'), timestamp: now, actorName: user.name, actorRole: user.role, actionType: 'Verification', applicationId: app.id, details: `Land verification completed for ${app.id}` });
       await addNotification({ id: generateId('notif'), userId: app.applicantId, title: 'Verification Complete', message: `Land verification for ${app.id} is complete.`, type: 'info', read: false, applicationId: app.id, createdAt: now });
-      await addNotification({ id: generateId('notif'), userId: 'user-officer-1', title: 'Verification Complete', message: `${app.id} has been verified by survey officer.`, type: 'info', read: false, applicationId: app.id, createdAt: now });
+      if (app.assignedOfficerId) {
+        await addNotification({ id: generateId('notif'), userId: app.assignedOfficerId, title: 'Verification Complete', message: `${app.id} has been verified by survey officer.`, type: 'info', read: false, applicationId: app.id, createdAt: now });
+      }
       setFindings('');
       toast({ title: 'Verification Complete', description: `Case ${app.id} marked as verified.` });
       setRefresh(r => r + 1);
     } catch (error) {
       toast({ title: 'Verification Failed', description: error instanceof Error ? error.message : 'Could not submit verification', variant: 'destructive' });
+    }
+  };
+
+  const openDocument = async (documentId: string) => {
+    const document = app.documents.find(item => item.id === documentId);
+    if (!document) return;
+
+    setOpeningDocumentId(documentId);
+    try {
+      const blob = await downloadApplicationDocument(document);
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error) {
+      toast({
+        title: 'Document Open Failed',
+        description: error instanceof Error ? error.message : 'Could not open this PDF file.',
+        variant: 'destructive',
+      });
+    } finally {
+      setOpeningDocumentId(null);
     }
   };
 
@@ -65,7 +93,16 @@ export default function VerificationDetailsPage() {
               {app.documents.map(d => (
                 <div key={d.id} className="flex items-center gap-3 p-2 rounded border">
                   <FileText className="h-5 w-5 text-primary" />
-                  <div><p className="text-sm">{d.documentType}</p><p className="text-xs text-muted-foreground">{d.name}</p></div>
+                  <div className="flex-1"><p className="text-sm">{d.documentType}</p><p className="text-xs text-muted-foreground">{d.name}</p></div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!d.filePath || d.filePath.startsWith('metadata-only/') || openingDocumentId === d.id}
+                    onClick={() => void openDocument(d.id)}
+                  >
+                    {openingDocumentId === d.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Open PDF'}
+                  </Button>
                 </div>
               ))}
             </div>

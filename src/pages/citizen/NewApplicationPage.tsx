@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { ChangeEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/DashboardLayout';
@@ -8,11 +8,79 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { addApplication, addAuditLog, addNotification, generateId, getUserProfileByNid } from '@/services/storageService';
-import { TransferType, DocumentFile } from '@/types';
+import {
+  addApplication,
+  addAuditLog,
+  addNotification,
+  DOCUMENT_MAX_SIZE_BYTES,
+  generateId,
+  getLandRecords,
+  getUserProfileByNid,
+  REQUIRED_APPLICATION_DOCUMENT_TYPES,
+} from '@/services/storageService';
+import { TransferType, DocumentFile, User } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { getDistricts, getUpazilas, getMouzas } from '@/data/locationData';
-import { Search, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Search, CheckCircle2, AlertCircle, Upload, Trash2, FileText, Loader2 } from 'lucide-react';
+
+type NidLookupFieldProps = {
+  label: string;
+  value: string;
+  nameValue: string;
+  lookupState: 'idle' | 'found' | 'not_found';
+  loading: boolean;
+  error?: string;
+  onChange: (value: string) => void;
+  onLookup: () => void;
+};
+
+function NidLookupField({
+  label,
+  value,
+  nameValue,
+  lookupState,
+  loading,
+  error,
+  onChange,
+  onLookup,
+}: NidLookupFieldProps) {
+  return (
+    <div className="space-y-2">
+      <Label>{label} NID Number <span className="text-destructive">*</span></Label>
+      <div className="flex gap-2">
+        <Input
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder="Enter registered NID"
+          className={error ? 'border-destructive' : ''}
+          autoComplete="off"
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          onClick={onLookup}
+          disabled={loading}
+        >
+          <Search className="h-4 w-4" />
+        </Button>
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      {lookupState === 'found' && (
+        <div className="flex items-center gap-2 p-2 rounded-md bg-accent/50 text-sm">
+          <CheckCircle2 className="h-4 w-4 text-primary" />
+          <span>Found: <strong>{nameValue}</strong></span>
+        </div>
+      )}
+      {lookupState === 'not_found' && (
+        <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4" />
+          <span>No citizen found with this NID</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function NewApplicationPage() {
   const { user } = useAuth();
@@ -34,9 +102,12 @@ export default function NewApplicationPage() {
   const [newOwnerLookup, setNewOwnerLookup] = useState<'idle' | 'found' | 'not_found'>('idle');
   const [currentOwnerLookupLoading, setCurrentOwnerLookupLoading] = useState(false);
   const [newOwnerLookupLoading, setNewOwnerLookupLoading] = useState(false);
+  const [currentOwnerProfile, setCurrentOwnerProfile] = useState<User | null>(null);
+  const [newOwnerProfile, setNewOwnerProfile] = useState<User | null>(null);
   const [step3Errors, setStep3Errors] = useState<Record<string, string>>({});
   const [step2Errors, setStep2Errors] = useState<Record<string, string>>({});
   const [documents, setDocuments] = useState<DocumentFile[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const set = (field: keyof typeof form, value: string) => setForm(prev => ({ ...prev, [field]: value }));
 
@@ -60,26 +131,32 @@ export default function NewApplicationPage() {
       if (found) {
         if (type === 'current') {
           set('currentOwner', found.name);
+          setCurrentOwnerProfile(found);
           setCurrentOwnerLookup('found');
         } else {
           set('proposedNewOwner', found.name);
+          setNewOwnerProfile(found);
           setNewOwnerLookup('found');
         }
       } else {
         if (type === 'current') {
           set('currentOwner', '');
+          setCurrentOwnerProfile(null);
           setCurrentOwnerLookup('not_found');
         } else {
           set('proposedNewOwner', '');
+          setNewOwnerProfile(null);
           setNewOwnerLookup('not_found');
         }
       }
     } catch (error) {
       if (type === 'current') {
         set('currentOwner', '');
+        setCurrentOwnerProfile(null);
         setCurrentOwnerLookup('not_found');
       } else {
         set('proposedNewOwner', '');
+        setNewOwnerProfile(null);
         setNewOwnerLookup('not_found');
       }
       toast({
@@ -134,19 +211,62 @@ export default function NewApplicationPage() {
     setStep(s => s + 1);
   };
 
-  const addDoc = (docType: DocumentFile['documentType']) => {
-    const doc: DocumentFile = {
-      id: generateId('doc'), name: `${docType.toLowerCase().replace(/ /g, '_')}.pdf`,
-      type: 'application/pdf', size: Math.floor(Math.random() * 300000) + 50000,
-      documentType: docType, uploadedAt: new Date().toISOString(),
-    };
-    setDocuments(prev => [...prev, doc]);
+  const allDocumentTypes: DocumentFile['documentType'][] = ['Land Deed', 'National ID', 'Tax Receipt', 'Supporting Document'];
+  const missingRequiredDocuments = REQUIRED_APPLICATION_DOCUMENT_TYPES.filter(docType => !documents.some(document => document.documentType === docType));
+
+  const validatePdfFile = (file: File, docType: DocumentFile['documentType']) => {
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) throw new Error(`${docType} must be uploaded as a PDF file.`);
+    if (file.size > DOCUMENT_MAX_SIZE_BYTES) throw new Error(`${docType} must be 10 MB or less.`);
+  };
+
+  const handleDocumentSelect = (docType: DocumentFile['documentType'], event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    try {
+      validatePdfFile(file, docType);
+      const document: DocumentFile = {
+        id: generateId('doc'),
+        name: file.name,
+        type: file.type || 'application/pdf',
+        size: file.size,
+        documentType: docType,
+        uploadedAt: new Date().toISOString(),
+        localFile: file,
+      };
+      setDocuments(prev => [...prev.filter(item => item.documentType !== docType), document]);
+    } catch (error) {
+      toast({
+        title: 'Invalid Document',
+        description: error instanceof Error ? error.message : 'Only PDF files up to 10 MB are allowed.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const removeDocument = (docType: DocumentFile['documentType']) => {
+    setDocuments(prev => prev.filter(document => document.documentType !== docType));
+  };
+
+  const validateStep4 = () => {
+    if (missingRequiredDocuments.length === 0) return true;
+    toast({
+      title: 'Missing Documents',
+      description: `Upload PDF files for ${missingRequiredDocuments.join(', ')} before submitting.`,
+      variant: 'destructive',
+    });
+    return false;
   };
 
   const handleSubmit = async () => {
     if (!user) return;
+    if (!validateStep4()) return;
+
     const appId = `APP-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
     const now = new Date().toISOString();
+    setIsSubmitting(true);
     try {
       await addApplication({
         id: appId, applicantId: user.id,
@@ -159,9 +279,12 @@ export default function NewApplicationPage() {
         proposedNewOwner: form.proposedNewOwner, transferType: form.transferType,
         reason: form.reason, deedReference: form.deedReference, remarks: form.remarks,
         documents, status: 'Pending',
-        comments: [], verificationNotes: [],
+        comments: [], clarifications: [], verificationNotes: [],
         statusHistory: [{ status: 'Pending', timestamp: now, actor: user.name }],
         createdAt: now, updatedAt: now,
+      }, {
+        currentOwnerId: currentOwnerProfile?.id,
+        proposedNewOwnerId: newOwnerProfile?.id,
       });
       await addAuditLog({ id: generateId('log'), timestamp: now, actorName: user.name, actorRole: user.role, actionType: 'Application Created', applicationId: appId, details: `New application for plot ${form.plotNumber}` });
       await addNotification({ id: generateId('notif'), userId: user.id, title: 'Application Submitted', message: `Your application ${appId} has been submitted successfully.`, type: 'success', read: false, applicationId: appId, createdAt: now });
@@ -169,60 +292,15 @@ export default function NewApplicationPage() {
       navigate('/citizen/applications');
     } catch (error) {
       toast({ title: 'Application Failed', description: error instanceof Error ? error.message : 'Could not submit application', variant: 'destructive' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const districts = getDistricts();
-  const upazilas = getUpazilas(form.district);
-  const mouzas = getMouzas(form.district, form.upazila);
-
-  const NidLookupField = ({ label, nidField, nameValue, lookupState, onLookup, error }: {
-    label: string; nidField: 'currentOwnerNid' | 'proposedNewOwnerNid'; nameValue: string;
-    lookupState: 'idle' | 'found' | 'not_found'; onLookup: () => void; error?: string;
-  }) => (
-    <div className="space-y-2">
-      <Label>{label} NID Number <span className="text-destructive">*</span></Label>
-      <div className="flex gap-2">
-        <Input
-          value={form[nidField]}
-          onChange={e => {
-            set(nidField, e.target.value);
-            if (nidField === 'currentOwnerNid') {
-              setCurrentOwnerLookup('idle');
-              set('currentOwner', '');
-            } else {
-              setNewOwnerLookup('idle');
-              set('proposedNewOwner', '');
-            }
-          }}
-          placeholder="Enter 13-digit NID number"
-          className={error ? 'border-destructive' : ''}
-        />
-        <Button
-          type="button"
-          variant="secondary"
-          size="icon"
-          onClick={onLookup}
-          disabled={nidField === 'currentOwnerNid' ? currentOwnerLookupLoading : newOwnerLookupLoading}
-        >
-          <Search className="h-4 w-4" />
-        </Button>
-      </div>
-      {error && <p className="text-xs text-destructive">{error}</p>}
-      {lookupState === 'found' && (
-        <div className="flex items-center gap-2 p-2 rounded-md bg-accent/50 text-sm">
-          <CheckCircle2 className="h-4 w-4 text-primary" />
-          <span>Found: <strong>{nameValue}</strong></span>
-        </div>
-      )}
-      {lookupState === 'not_found' && (
-        <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 text-sm text-destructive">
-          <AlertCircle className="h-4 w-4" />
-          <span>No citizen found with this NID</span>
-        </div>
-      )}
-    </div>
-  );
+  const landRecords = getLandRecords();
+  const districts = getDistricts(landRecords);
+  const upazilas = getUpazilas(form.district, landRecords);
+  const mouzas = getMouzas(form.district, form.upazila, landRecords);
 
   return (
     <DashboardLayout>
@@ -310,17 +388,31 @@ export default function NewApplicationPage() {
                 <div className="space-y-4">
                   <NidLookupField
                     label="Current Owner"
-                    nidField="currentOwnerNid"
+                    value={form.currentOwnerNid}
                     nameValue={form.currentOwner}
                     lookupState={currentOwnerLookup}
+                    loading={currentOwnerLookupLoading}
+                    onChange={value => {
+                      set('currentOwnerNid', value);
+                      setCurrentOwnerLookup('idle');
+                      set('currentOwner', '');
+                      setCurrentOwnerProfile(null);
+                    }}
                     onLookup={() => void lookupByNid(form.currentOwnerNid, 'current')}
                     error={step2Errors.currentOwnerNid}
                   />
                   <NidLookupField
                     label="Proposed New Owner"
-                    nidField="proposedNewOwnerNid"
+                    value={form.proposedNewOwnerNid}
                     nameValue={form.proposedNewOwner}
                     lookupState={newOwnerLookup}
+                    loading={newOwnerLookupLoading}
+                    onChange={value => {
+                      set('proposedNewOwnerNid', value);
+                      setNewOwnerLookup('idle');
+                      set('proposedNewOwner', '');
+                      setNewOwnerProfile(null);
+                    }}
                     onLookup={() => void lookupByNid(form.proposedNewOwnerNid, 'new')}
                     error={step2Errors.proposedNewOwnerNid}
                   />
@@ -360,18 +452,50 @@ export default function NewApplicationPage() {
           )}
           {step === 4 && (
             <>
-              <p className="text-sm text-muted-foreground mb-4">Simulate document uploads. Click to add each required document.</p>
-              {(['Land Deed', 'National ID', 'Tax Receipt', 'Supporting Document'] as const).map(docType => {
+              <p className="text-sm text-muted-foreground mb-4">Upload real PDF files. Land Deed, National ID, and Tax Receipt are required. Max size 10 MB each.</p>
+              {allDocumentTypes.map(docType => {
                 const uploaded = documents.find(d => d.documentType === docType);
+                const inputId = `document-upload-${docType.toLowerCase().replace(/\s+/g, '-')}`;
+                const isRequired = REQUIRED_APPLICATION_DOCUMENT_TYPES.includes(docType);
                 return (
                   <div key={docType} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium">{docType}</p>
-                      {uploaded && <p className="text-xs text-muted-foreground">{uploaded.name} — {(uploaded.size / 1024).toFixed(0)} KB</p>}
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">
+                        {docType}
+                        {isRequired && <span className="ml-2 text-xs text-destructive">Required</span>}
+                      </p>
+                      {uploaded ? (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <FileText className="h-4 w-4" />
+                          <span>{uploaded.name} — {(uploaded.size / 1024).toFixed(0)} KB</span>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">PDF only</p>
+                      )}
                     </div>
-                    <Button size="sm" variant={uploaded ? 'secondary' : 'default'} disabled={!!uploaded} onClick={() => addDoc(docType)}>
-                      {uploaded ? 'Uploaded' : 'Upload'}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id={inputId}
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        className="hidden"
+                        onChange={event => handleDocumentSelect(docType, event)}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={uploaded ? 'secondary' : 'default'}
+                        onClick={() => window.document.getElementById(inputId)?.click()}
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        {uploaded ? 'Replace PDF' : 'Upload PDF'}
+                      </Button>
+                      {uploaded && (
+                        <Button type="button" size="icon" variant="outline" onClick={() => removeDocument(docType)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -379,11 +503,13 @@ export default function NewApplicationPage() {
           )}
 
           <div className="flex justify-between pt-4">
-            <Button variant="outline" onClick={() => setStep(s => s - 1)} disabled={step === 1}>Previous</Button>
+            <Button variant="outline" onClick={() => setStep(s => s - 1)} disabled={step === 1 || isSubmitting}>Previous</Button>
             {step < 4 ? (
-              <Button onClick={handleNext}>Next</Button>
+              <Button onClick={handleNext} disabled={isSubmitting}>Next</Button>
             ) : (
-              <Button onClick={handleSubmit}>Submit Application</Button>
+              <Button onClick={handleSubmit} disabled={isSubmitting}>
+                {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading PDFs...</> : 'Submit Application'}
+              </Button>
             )}
           </div>
         </CardContent>

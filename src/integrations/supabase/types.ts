@@ -23,6 +23,13 @@ export interface DbUserRole {
   role_id: number;
 }
 
+export interface DbUserSummary {
+  user_id: number;
+  full_name: string;
+  email: string;
+  nid_number: string | null;
+}
+
 export interface DbLandParcel {
   land_id: number;
   plot_number: string;
@@ -102,6 +109,18 @@ export interface DbVerification {
   created_at: string;
 }
 
+export interface DbClarification {
+  clarification_id: number;
+  application_id: number;
+  requested_by: number;
+  request_message: string | null;
+  responded_by: number | null;
+  response_message: string | null;
+  status: string;
+  requested_at: string;
+  responded_at: string | null;
+}
+
 export interface DbStatusHistory {
   history_id?: number;
   application_id: number;
@@ -133,4 +152,26 @@ export interface DbAuditLog {
   ip_address: string | null;
   user_agent: string | null;
   created_at: string;
+}
+
+export interface DbLandOwner {
+  id: number;
+  land_id: number;
+  user_id: number;
+  ownership_percentage: number | string | null;
+  ownership_source: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  is_current_owner: boolean | null;
+  created_at: string;
+  users?: DbUserSummary | DbUserSummary[] | null;
+}
+
+export interface DbApplicationNewOwner {
+  id: number;
+  application_id: number;
+  user_id: number;
+  ownership_percentage: number | string | null;
+  created_at: string;
+  users?: DbUserSummary | DbUserSummary[] | null;
 }

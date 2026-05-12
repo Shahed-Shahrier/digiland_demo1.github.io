@@ -1,15 +1,18 @@
 import { useState } from 'react';
-import { getUsers, deleteUser } from '@/services/storageService';
+import { getUsers, deleteUser, updateUserRole } from '@/services/storageService';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { UserRole } from '@/types';
 
 export default function UserManagementPage() {
   const [query, setQuery] = useState('');
+  const [roleDrafts, setRoleDrafts] = useState<Record<string, UserRole>>({});
   const [, setRefresh] = useState(0);
   const { toast } = useToast();
   const users = getUsers().filter(u => u.name.toLowerCase().includes(query.toLowerCase()) || u.email.toLowerCase().includes(query.toLowerCase()));
@@ -21,6 +24,21 @@ export default function UserManagementPage() {
       setRefresh(r => r + 1);
     } catch (error) {
       toast({ title: 'Delete Failed', description: error instanceof Error ? error.message : 'Could not delete user', variant: 'destructive' });
+    }
+  };
+
+  const handleRoleSave = async (id: string, name: string) => {
+    const user = users.find(item => item.id === id);
+    const nextRole = roleDrafts[id] || user?.role;
+
+    if (!user || !nextRole || nextRole === user.role) return;
+
+    try {
+      await updateUserRole(id, nextRole);
+      toast({ title: 'Role Updated', description: `${name} is now ${nextRole.replace('_', ' ')}.` });
+      setRefresh(r => r + 1);
+    } catch (error) {
+      toast({ title: 'Role Update Failed', description: error instanceof Error ? error.message : 'Could not update role', variant: 'destructive' });
     }
   };
 
@@ -56,6 +74,20 @@ export default function UserManagementPage() {
               </div>
               <div className="flex items-center gap-3">
                 <Badge className={roleColors[u.role]}>{u.role.replace('_', ' ')}</Badge>
+                <Select value={roleDrafts[u.id] || u.role} onValueChange={value => setRoleDrafts(prev => ({ ...prev, [u.id]: value as UserRole }))}>
+                  <SelectTrigger className="w-[170px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="citizen">Citizen</SelectItem>
+                    <SelectItem value="land_officer">Land Officer</SelectItem>
+                    <SelectItem value="survey_officer">Survey Officer</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="sm" onClick={() => void handleRoleSave(u.id, u.name)} disabled={(roleDrafts[u.id] || u.role) === u.role}>
+                  Save
+                </Button>
                 <Button variant="ghost" size="icon" onClick={() => handleDelete(u.id, u.name)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
               </div>
             </CardContent>
