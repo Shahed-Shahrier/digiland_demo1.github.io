@@ -3,6 +3,8 @@ import {
   AuditLog,
   Application,
   ApplicationStatus,
+  ClarificationRecord,
+  DocumentFile,
   LandRecord,
   Notification,
   ReviewComment,
@@ -14,14 +16,18 @@ import {
 import { dbRoleToFrontendRole, frontendRoleToDbRole, PUBLIC_REGISTRATION_ROLE } from '@/lib/roles';
 import {
   DbApplication,
+  DbApplicationNewOwner,
   DbAuditLog,
+  DbClarification,
   DbDocument,
   DbLandParcel,
+  DbLandOwner,
   DbNotification,
   DbReview,
   DbRole,
   DbStatusHistory,
   DbUser,
+  DbUserSummary,
   DbUserRole,
   DbVerification,
 } from '@/integrations/supabase/types';
@@ -44,6 +50,10 @@ const cache: Cache = {
 
 let initialized = false;
 
+const DOCUMENT_BUCKET = 'digiland';
+export const DOCUMENT_MAX_SIZE_BYTES = 10 * 1024 * 1024;
+export const REQUIRED_APPLICATION_DOCUMENT_TYPES: DocumentFile['documentType'][] = ['Land Deed', 'National ID', 'Tax Receipt'];
+
 function unwrap<T>(result: { data: T | null; error: { message: string } | null }, context: string): T {
   if (result.error) {
     throw new Error(`${context}: ${result.error.message}`);
@@ -54,7 +64,7 @@ function unwrap<T>(result: { data: T | null; error: { message: string } | null }
 function statusFromDb(status?: string | null): ApplicationStatus {
   const value = (status || 'Pending').toLowerCase().replace(/_/g, ' ');
   if (value === 'draft' || value === 'submitted') return 'Pending';
-  if (value === 'under review') return 'Under Review';
+  if (value === 'under review' || value === 'verification pending') return 'Under Review';
   if (value === 'clarification requested') return 'Clarification Requested';
   if (value === 'verified') return 'Verified';
   if (value === 'approved') return 'Approved';
@@ -68,7 +78,9 @@ function statusToDb(status: ApplicationStatus) {
 }
 
 function transferToDb(type: TransferType) {
-  return type.toLowerCase().replace(/ /g, '_');
+  const value = type.toLowerCase().replace(/ /g, '_');
+  if (['sale', 'inheritance', 'gift'].includes(value)) return value;
+  return 'other';
 }
 
 function transferFromDb(type?: string | null): TransferType {
@@ -111,8 +123,56 @@ function inferDivision(district?: string | null) {
 function documentTypeToDb(type: Application['documents'][number]['documentType']) {
   if (type === 'National ID') return 'nid';
   if (type === 'Tax Receipt') return 'tax_receipt';
-  if (type === 'Supporting Document') return 'supporting_document';
-  return 'land_deed';
+  if (type === 'Supporting Document') return 'other';
+  return 'deed';
+}
+
+function sanitizeFilename(name: string) {
+  return name
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9._-]/g, '')
+    .replace(/-+/g, '-')
+    .toLowerCase() || `document-${Date.now()}.pdf`;
+}
+
+function missingRequiredDocumentTypes(documents: DocumentFile[]) {
+  return REQUIRED_APPLICATION_DOCUMENT_TYPES.filter(type => !documents.some(document => document.documentType === type));
+}
+
+function isPdfMimeType(type?: string | null) {
+  return (type || '').toLowerCase() === 'application/pdf';
+}
+
+function isPdfFilename(name?: string | null) {
+  return (name || '').toLowerCase().endsWith('.pdf');
+}
+
+function assertValidPdfDocument(document: DocumentFile) {
+  if (!document.localFile) {
+    throw new Error(`${document.documentType}: choose a PDF file before submitting.`);
+  }
+
+  if (!isPdfMimeType(document.type) && !isPdfFilename(document.name)) {
+    throw new Error(`${document.documentType}: only PDF files are allowed.`);
+  }
+
+  if (document.size <= 0) {
+    throw new Error(`${document.documentType}: uploaded file is empty.`);
+  }
+
+  if (document.size > DOCUMENT_MAX_SIZE_BYTES) {
+    throw new Error(`${document.documentType}: file size must be 10 MB or less.`);
+  }
+}
+
+function hasStoredDocumentPath(filePath?: string | null) {
+  return Boolean(filePath && !filePath.startsWith('metadata-only/'));
+}
+
+function buildDocumentStoragePath(authUserId: string, applicationNumber: string, document: DocumentFile) {
+  const safeFileName = sanitizeFilename(isPdfFilename(document.name) ? document.name : `${document.name}.pdf`);
+  return `${authUserId}/${applicationNumber}/${documentTypeToDb(document.documentType)}-${Date.now()}-${safeFileName}`;
 }
 
 function mapUser(row: DbUser, role?: string | null): User {
@@ -151,9 +211,212 @@ function mapOwnership(status?: string | null): LandRecord['ownershipStatus'] {
 
 function ownershipToDb(status: LandRecord['ownershipStatus']) {
   if (status === 'Disputed') return 'disputed';
-  if (status === 'Transferred') return 'transferred';
   if (status === 'Government') return 'government';
-  return 'unknown';
+  if (status === 'Transferred') return 'unknown';
+  return 'single_owner';
+}
+
+function notificationTypeToDb(notification: Pick<Notification, 'type' | 'title' | 'message' | 'applicationId'>) {
+  const title = notification.title.toLowerCase();
+  const message = notification.message.toLowerCase();
+  const text = `${title} ${message}`;
+
+  if (text.includes('clarification')) return 'clarification';
+  if (text.includes('approved') || text.includes('rejected') || text.includes('decision')) return 'decision';
+  if (text.includes('document') || text.includes('pdf') || text.includes('upload')) return 'document';
+  if (text.includes('payment') || text.includes('fee')) return 'payment';
+  if (text.includes('status') || text.includes('verification') || text.includes('assigned') || text.includes('review')) return 'status';
+  if (notification.applicationId) return 'application';
+  return 'system';
+}
+
+async function findDbApplicationByPublicId(id: string) {
+  const byApplicationNumber = unwrap<DbApplication | null>(
+    await supabase.from('applications').select('*').eq('application_number', id).maybeSingle(),
+    'Find application by number',
+  );
+  if (byApplicationNumber) return byApplicationNumber;
+
+  const parsedId = numericId(id);
+  if (!parsedId) return null;
+
+  return unwrap<DbApplication | null>(
+    await supabase.from('applications').select('*').eq('application_id', parsedId).maybeSingle(),
+    'Find application by id',
+  );
+}
+
+function buildApplicationUpdatePayload(updates: Partial<Application>, currentDbApplication: DbApplication) {
+  const payload: Record<string, string | number | null | undefined> = {
+    updated_at: updates.updatedAt || new Date().toISOString(),
+  };
+
+  if ('status' in updates && updates.status) {
+    const nextStatus = statusToDb(updates.status);
+    payload.current_status = nextStatus;
+
+    if (nextStatus === 'approved') {
+      payload.approved_at = currentDbApplication.approved_at || payload.updated_at;
+      payload.rejected_at = null;
+    } else if (nextStatus === 'rejected') {
+      payload.rejected_at = currentDbApplication.rejected_at || payload.updated_at;
+      payload.approved_at = null;
+    } else {
+      payload.approved_at = null;
+      payload.rejected_at = null;
+    }
+  }
+
+  if ('assignedOfficerId' in updates) {
+    payload.assigned_admin_id = updates.assignedOfficerId ? numericId(updates.assignedOfficerId) : null;
+  }
+
+  if ('assignedSurveyOfficerId' in updates) {
+    payload.assigned_survey_officer_id = updates.assignedSurveyOfficerId ? numericId(updates.assignedSurveyOfficerId) : null;
+  }
+
+  return payload;
+}
+
+function embeddedUser(row?: DbUserSummary | DbUserSummary[] | null) {
+  if (!row) return null;
+  return Array.isArray(row) ? row[0] || null : row;
+}
+
+function formatRelatedUserNames(rows: Array<{ user_id: number; users?: DbUserSummary | DbUserSummary[] | null }>, usersById?: Map<string, User>) {
+  const names = rows
+    .map(row => embeddedUser(row.users)?.full_name || usersById?.get(String(row.user_id))?.name || '')
+    .filter(Boolean);
+
+  return Array.from(new Set(names)).join(', ');
+}
+
+function sameText(left?: string | null, right?: string | null) {
+  return (left || '').trim().toLowerCase() === (right || '').trim().toLowerCase();
+}
+
+function isDuplicateLocationError(error: unknown) {
+  return error instanceof Error && error.message.includes('land_parcel_unique_location');
+}
+
+function isRlsPolicyError(error: unknown) {
+  return error instanceof Error && error.message.toLowerCase().includes('row-level security policy');
+}
+
+function findCachedLandRecordByLocation(record: Pick<LandRecord, 'district' | 'upazila' | 'mouza'>) {
+  return cache.landRecords.find(item =>
+    sameText(item.district, record.district) &&
+    sameText(item.upazila, record.upazila) &&
+    sameText(item.mouza, record.mouza),
+  ) || null;
+}
+
+async function findExistingLandParcelByLocation(record: Pick<LandRecord, 'district' | 'upazila' | 'mouza'>) {
+  const cached = findCachedLandRecordByLocation(record);
+  if (cached) return cached;
+
+  const rows = unwrap<DbLandParcel[]>(
+    await supabase
+      .from('land_parcels')
+      .select('*')
+      .eq('district', textOrFallback(record.district, 'Dhaka'))
+      .eq('upazila', textOrFallback(record.upazila, 'Unknown Upazila'))
+      .eq('mouza', textOrFallback(record.mouza, 'Unknown Mouza'))
+      .limit(1),
+    'Find existing land parcel by location',
+  );
+
+  return rows[0] ? mapLandRecord(rows[0]) : null;
+}
+
+async function loadRoleNameForUserId(userId: number) {
+  const { data: roleRows, error } = await supabase
+    .from('user_roles')
+    .select('roles(role_name)')
+    .eq('user_id', userId);
+
+  if (error) throw new Error(`Load user role: ${error.message}`);
+
+  const roleRecord = Array.isArray(roleRows) ? (roleRows[0] as { roles?: { role_name?: string } | Array<{ role_name?: string }> } | undefined)?.roles : undefined;
+  return roleRecord
+    ? (Array.isArray(roleRecord) ? roleRecord[0]?.role_name : roleRecord.role_name)
+    : undefined;
+}
+
+async function syncLandOwnership(
+  landId: number,
+  ownerUserId: number | null,
+  ownerName: string,
+  source: string,
+  verifiedByUserId?: number | null,
+) {
+  if (!ownerUserId) return;
+
+  const now = new Date().toISOString();
+  const existingOwnerRows = unwrap<Array<{ id: number }>>(
+    await supabase
+      .from('land_owners')
+      .select('id')
+      .eq('land_id', landId)
+      .eq('user_id', ownerUserId)
+      .limit(1),
+    `Check land owner for ${ownerName}`,
+  );
+
+  if (existingOwnerRows.length === 0) {
+    try {
+      unwrap(
+        await supabase.from('land_owners').insert({
+          land_id: landId,
+          user_id: ownerUserId,
+          ownership_percentage: 100,
+          ownership_source: source,
+          start_date: now.slice(0, 10),
+          is_current_owner: true,
+        }),
+        `Create land owner for ${ownerName}`,
+      );
+    } catch (error) {
+      if (isRlsPolicyError(error)) {
+        throw new Error('Backend policy blocks owner linking in land_owners. Apply the Supabase RLS fix for land owner management first.');
+      }
+      throw error;
+    }
+  }
+
+  const existingUserLandRows = unwrap<Array<{ user_land_record_id: number }>>(
+    await supabase
+      .from('user_land_records')
+      .select('user_land_record_id')
+      .eq('land_id', landId)
+      .eq('user_id', ownerUserId)
+      .limit(1),
+    `Check user land record for ${ownerName}`,
+  );
+
+  if (existingUserLandRows.length === 0) {
+    try {
+      unwrap(
+        await supabase.from('user_land_records').insert({
+          user_id: ownerUserId,
+          land_id: landId,
+          verified_by: verifiedByUserId || null,
+          record_source: 'manual_entry',
+          record_status: 'verified',
+          ownership_claim_note: ownerName ? `Ownership registered for ${ownerName}` : 'Ownership registered from Digi-Land.',
+          verification_note: source,
+          registered_at: now,
+          verified_at: now,
+        }),
+        `Create user land record for ${ownerName}`,
+      );
+    } catch (error) {
+      if (isRlsPolicyError(error)) {
+        throw new Error('Backend policy blocks owner linking in user_land_records. Apply the Supabase RLS fix for owner record management first.');
+      }
+      throw error;
+    }
+  }
 }
 
 function mapDocument(row: DbDocument) {
@@ -164,15 +427,61 @@ function mapDocument(row: DbDocument) {
     size: Number(row.file_size || 0),
     documentType: mapDocumentType(row.document_type),
     uploadedAt: row.uploaded_at,
+    filePath: row.file_path || undefined,
   };
 }
 
 function mapDocumentType(type?: string | null): Application['documents'][number]['documentType'] {
   const value = (type || '').toLowerCase();
   if (value.includes('nid') || value.includes('national')) return 'National ID';
+  if (value.includes('deed')) return 'Land Deed';
   if (value.includes('tax')) return 'Tax Receipt';
-  if (value.includes('support')) return 'Supporting Document';
+  if (value.includes('support') || value === 'other' || value.includes('khatian') || value.includes('mutation') || value.includes('survey') || value.includes('photo')) return 'Supporting Document';
   return 'Land Deed';
+}
+
+async function uploadApplicationDocument(applicationNumber: string, document: DocumentFile) {
+  assertValidPdfDocument(document);
+
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError) throw new Error(`Load authenticated user for document upload: ${authError.message}`);
+
+  const authUserId = authData.user?.id;
+  if (!authUserId) throw new Error('Document upload requires an authenticated user.');
+
+  const filePath = buildDocumentStoragePath(authUserId, applicationNumber, document);
+  const { error } = await supabase.storage
+    .from(DOCUMENT_BUCKET)
+    .upload(filePath, document.localFile as File, {
+      contentType: 'application/pdf',
+      upsert: false,
+    });
+
+  if (error) throw new Error(`Upload ${document.documentType}: ${error.message}`);
+  return filePath;
+}
+
+async function removeUploadedDocuments(filePaths: string[]) {
+  const removablePaths = filePaths.filter(hasStoredDocumentPath);
+  if (removablePaths.length === 0) return;
+
+  const { error } = await supabase.storage.from(DOCUMENT_BUCKET).remove(removablePaths);
+  if (error) {
+    console.warn('Document cleanup failed after application error.', error);
+  }
+}
+
+export async function downloadApplicationDocument(document: Pick<DocumentFile, 'filePath' | 'name'>) {
+  if (!hasStoredDocumentPath(document.filePath)) {
+    throw new Error('This document does not have a stored PDF file yet.');
+  }
+
+  const { data, error } = await supabase.storage
+    .from(DOCUMENT_BUCKET)
+    .download(document.filePath as string);
+
+  if (error) throw new Error(`Open document ${document.name}: ${error.message}`);
+  return data;
 }
 
 function mapReview(row: DbReview, usersById: Map<string, User>): ReviewComment {
@@ -196,8 +505,24 @@ function mapVerification(row: DbVerification, usersById: Map<string, User>): Ver
     officerId: String(row.survey_officer_id),
     officerName: officer?.name || `User ${row.survey_officer_id}`,
     findings: row.notes || '',
-    isVerified: row.result ? !String(row.result).toLowerCase().includes('reject') : Boolean(row.geo_verified),
+    isVerified: row.result ? String(row.result).toLowerCase().includes('pass') : Boolean(row.geo_verified),
     createdAt: row.created_at,
+  };
+}
+
+function mapClarification(row: DbClarification, usersById: Map<string, User>): ClarificationRecord {
+  return {
+    id: String(row.clarification_id),
+    applicationId: String(row.application_id),
+    requestedById: String(row.requested_by),
+    requestedByName: usersById.get(String(row.requested_by))?.name || `User ${row.requested_by}`,
+    requestMessage: row.request_message || '',
+    respondedById: row.responded_by ? String(row.responded_by) : undefined,
+    respondedByName: row.responded_by ? usersById.get(String(row.responded_by))?.name || `User ${row.responded_by}` : undefined,
+    responseMessage: row.response_message || undefined,
+    status: (row.status || 'open') as ClarificationRecord['status'],
+    requestedAt: row.requested_at,
+    respondedAt: row.responded_at || undefined,
   };
 }
 
@@ -208,18 +533,19 @@ function mapNotification(row: DbNotification): Notification {
     userId: String(row.recipient_user_id),
     title: row.title,
     message: row.message,
-    type: mapNotificationType(row.type),
+    type: mapNotificationType(row.type, row.title, row.message),
     read: row.is_read,
     applicationId,
     createdAt: row.created_at,
   };
 }
 
-function mapNotificationType(type?: string | null): Notification['type'] {
+function mapNotificationType(type?: string | null, title?: string | null, message?: string | null): Notification['type'] {
   const value = (type || '').toLowerCase();
-  if (value.includes('success')) return 'success';
-  if (value.includes('warn')) return 'warning';
-  if (value.includes('error') || value.includes('reject')) return 'error';
+  const text = `${title || ''} ${message || ''}`.toLowerCase();
+  if (value === 'clarification') return 'warning';
+  if (value === 'decision') return text.includes('reject') ? 'error' : 'success';
+  if (text.includes('failed') || text.includes('reject') || text.includes('error')) return 'error';
   return 'info';
 }
 
@@ -250,10 +576,18 @@ function mapApplication(
   documents: DbDocument[],
   reviews: DbReview[],
   verifications: DbVerification[],
+  clarifications: DbClarification[],
   historyRows: DbStatusHistory[],
+  newOwners: DbApplicationNewOwner[],
 ): Application {
   const applicant = usersById.get(String(row.applicant_user_id));
   const land = landById.get(String(row.land_id));
+  const assignedOfficer = row.assigned_admin_id ? usersById.get(String(row.assigned_admin_id)) : undefined;
+  const assignedSurveyOfficer = row.assigned_survey_officer_id ? usersById.get(String(row.assigned_survey_officer_id)) : undefined;
+  const proposedNewOwner = formatRelatedUserNames(
+    newOwners.filter(owner => String(owner.application_id) === String(row.application_id)),
+    usersById,
+  );
   const statusHistory = historyRows
     .filter(h => String(h.application_id) === String(row.application_id))
     .map(h => ({
@@ -277,15 +611,19 @@ function mapApplication(
     mouza: land?.mouza || '',
     landSize: land?.landSize || '',
     currentOwner: land?.ownerName || '',
-    proposedNewOwner: '',
+    proposedNewOwner,
     transferType: transferFromDb(row.transfer_type),
     reason: row.cancellation_reason || row.rejection_reason || '',
     deedReference: '',
     remarks: row.rejection_reason || row.cancellation_reason || '',
     documents: documents.filter(d => String(d.application_id) === String(row.application_id)).map(mapDocument),
     status: statusFromDb(row.current_status),
+    assignedOfficerId: row.assigned_admin_id ? String(row.assigned_admin_id) : undefined,
+    assignedOfficerName: assignedOfficer?.name,
     assignedSurveyOfficerId: row.assigned_survey_officer_id ? String(row.assigned_survey_officer_id) : undefined,
+    assignedSurveyOfficerName: assignedSurveyOfficer?.name,
     comments: reviews.filter(r => String(r.application_id) === String(row.application_id)).map(r => mapReview(r, usersById)),
+    clarifications: clarifications.filter(c => String(c.application_id) === String(row.application_id)).map(c => mapClarification(c, usersById)),
     verificationNotes: verifications.filter(v => String(v.application_id) === String(row.application_id)).map(v => mapVerification(v, usersById)),
     statusHistory: statusHistory.length > 0 ? statusHistory : [{ status: statusFromDb(row.current_status), timestamp: row.created_at, actor: 'System' }],
     createdAt: row.created_at,
@@ -313,22 +651,69 @@ async function loadUsers() {
 }
 
 async function loadLandRecords() {
-  const parcels = await selectAll<DbLandParcel>('land_parcels', 'created_at');
-  cache.landRecords = parcels.map(parcel => mapLandRecord(parcel));
+  const result = await supabase
+    .from('land_parcels')
+    .select(`
+      *,
+      land_owners (
+        land_id,
+        user_id,
+        is_current_owner,
+        ownership_percentage,
+        users (
+          user_id,
+          full_name,
+          email,
+          nid_number
+        )
+      )
+    `)
+    .order('created_at', { ascending: false });
+
+  const parcels = unwrap<Array<DbLandParcel & { land_owners?: DbLandOwner[] | null }>>(
+    result as { data: Array<DbLandParcel & { land_owners?: DbLandOwner[] | null }> | null; error: { message: string } | null },
+    'Load land_parcels',
+  );
+
+  const usersById = new Map(cache.users.map(user => [user.id, user]));
+  cache.landRecords = parcels.map(parcel => {
+    const currentOwners = (parcel.land_owners || []).filter(owner => owner.is_current_owner !== false);
+    const ownerName = formatRelatedUserNames(currentOwners, usersById) || 'Unknown owner';
+    return mapLandRecord(parcel, ownerName);
+  });
   return cache.landRecords;
 }
 
 async function loadApplications() {
-  const [applications, documents, reviews, verifications, history] = await Promise.all([
+  const [applications, documents, reviews, verifications, clarifications, history] = await Promise.all([
     selectAll<DbApplication>('applications', 'created_at'),
     selectAll<DbDocument>('documents', 'uploaded_at'),
     selectAll<DbReview>('reviews', 'created_at'),
     selectAll<DbVerification>('verifications', 'created_at'),
+    selectAll<DbClarification>('clarifications', 'requested_at'),
     selectAll<DbStatusHistory>('application_status_history', 'changed_at'),
   ]);
+  const newOwners = unwrap<DbApplicationNewOwner[]>(
+    await supabase
+      .from('application_new_owners')
+      .select(`
+        id,
+        application_id,
+        user_id,
+        ownership_percentage,
+        created_at,
+        users (
+          user_id,
+          full_name,
+          email,
+          nid_number
+        )
+      `),
+    'Load application_new_owners',
+  );
   const usersById = new Map(cache.users.map(user => [user.id, user]));
   const landById = new Map(cache.landRecords.map(land => [land.id, land]));
-  cache.applications = applications.map(app => mapApplication(app, usersById, landById, documents, reviews, verifications, history));
+  cache.applications = applications.map(app => mapApplication(app, usersById, landById, documents, reviews, verifications, clarifications, history, newOwners));
   return cache.applications;
 }
 
@@ -379,18 +764,7 @@ export async function getUserProfileByEmail(email: string) {
   const row = unwrap<DbUser | null>(result, 'Load user profile');
   if (!row) return null;
 
-  const { data: roleRows, error } = await supabase
-    .from('user_roles')
-    .select('roles(role_name)')
-    .eq('user_id', row.user_id);
-
-  if (error) throw new Error(`Load user role: ${error.message}`);
-
-  const roleRecord = Array.isArray(roleRows) ? (roleRows[0] as { roles?: { role_name?: string } | Array<{ role_name?: string }> } | undefined)?.roles : undefined;
-  const roleName = roleRecord
-    ? (Array.isArray(roleRecord) ? roleRecord[0]?.role_name : roleRecord.role_name)
-    : undefined;
-
+  const roleName = await loadRoleNameForUserId(row.user_id);
   return mapUser(row, roleName);
 }
 
@@ -546,7 +920,55 @@ export const getUsers = () => cache.users;
 
 export const getUserById = (id: string) => getUsers().find(u => u.id === id) || null;
 
+export const getSurveyOfficers = () => getUsers().filter(user => user.role === 'survey_officer');
+
 export const addUser = createUserProfile;
+
+export const updateUserRole = async (id: string, role: UserRole) => {
+  const userId = numericId(id);
+  if (!userId) throw new Error(`Update user role: invalid user id ${id}`);
+
+  const safeDbRole = frontendRoleToDbRole(role);
+  const roleRow = unwrap<DbRole | null>(
+    await supabase
+      .from('roles')
+      .select('*')
+      .eq('role_name', safeDbRole)
+      .maybeSingle(),
+    'Load role for update',
+  );
+
+  if (!roleRow) throw new Error(`Update user role: database role ${safeDbRole} not found`);
+
+  const existing = unwrap<DbUserRole | null>(
+    await supabase
+      .from('user_roles')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle(),
+    'Load current user role',
+  );
+
+  if (existing) {
+    unwrap(
+      await supabase
+        .from('user_roles')
+        .update({ role_id: roleRow.role_id })
+        .eq('user_id', userId),
+      'Update user role',
+    );
+  } else {
+    unwrap(
+      await supabase
+        .from('user_roles')
+        .insert({ user_id: userId, role_id: roleRow.role_id }),
+      'Create user role',
+    );
+  }
+
+  cache.users = cache.users.map(user => user.id === id ? { ...user, role } : user);
+  return cache.users.find(user => user.id === id) || null;
+};
 
 export const updateUser = async (id: string, updates: Partial<User>) => {
   const userId = numericId(id);
@@ -589,36 +1011,62 @@ export const deleteUser = async (id: string) => {
 // Land Records
 export const getLandRecords = () => cache.landRecords;
 
-export const addLandRecord = async (record: LandRecord) => {
+export const addLandRecord = async (
+  record: LandRecord,
+  options?: { ownerUserId?: string; verifiedByUserId?: string },
+) => {
   const fallbackKhatian = textOrFallback(record.holdingNumber, `KH-${record.plotNumber || Date.now()}`);
   const district = textOrFallback(record.district, 'Dhaka');
   const upazila = textOrFallback(record.upazila, 'Unknown Upazila');
   const mouza = textOrFallback(record.mouza, 'Unknown Mouza');
+  const ownerUserId = numericId(options?.ownerUserId);
+  const verifiedByUserId = numericId(options?.verifiedByUserId);
+  const existingLand = await findExistingLandParcelByLocation({ district, upazila, mouza });
+  if (existingLand) {
+    await syncLandOwnership(Number(existingLand.id), ownerUserId, record.ownerName, 'Linked existing Digi-Land land parcel to owner from admin form.', verifiedByUserId);
+    const mapped = { ...existingLand, ownerName: record.ownerName || existingLand.ownerName };
+    cache.landRecords = [mapped, ...cache.landRecords.filter(item => item.id !== mapped.id)];
+    return mapped;
+  }
 
-  const inserted = unwrap<DbLandParcel>(
-    await supabase
-      .from('land_parcels')
-      .insert({
-        plot_number: textOrFallback(record.plotNumber, `PLOT-${Date.now()}`),
-        holding_number: record.holdingNumber || null,
-        khatian_number: fallbackKhatian,
-        mouza,
-        division: inferDivision(district),
-        district,
-        upazila,
-        area_size: parseAreaSize(record.landSize),
-        land_type: 'other',
-        ownership_status: ownershipToDb(record.ownershipStatus),
-        current_status: 'active',
-      })
-      .select()
-      .single(),
-    'Create land parcel',
-  );
+  try {
+    const inserted = unwrap<DbLandParcel>(
+      await supabase
+        .from('land_parcels')
+        .insert({
+          plot_number: textOrFallback(record.plotNumber, `PLOT-${Date.now()}`),
+          holding_number: record.holdingNumber || null,
+          khatian_number: fallbackKhatian,
+          mouza,
+          division: inferDivision(district),
+          district,
+          upazila,
+          area_size: parseAreaSize(record.landSize),
+          land_type: 'other',
+          ownership_status: ownershipToDb(record.ownershipStatus),
+          current_status: 'active',
+        })
+        .select()
+        .single(),
+      'Create land parcel',
+    );
 
-  const mapped = mapLandRecord(inserted, record.ownerName);
-  cache.landRecords = [mapped, ...cache.landRecords];
-  return mapped;
+    await syncLandOwnership(inserted.land_id, ownerUserId, record.ownerName, 'Added from Digi-Land admin land record form.', verifiedByUserId);
+
+    const mapped = mapLandRecord(inserted, record.ownerName);
+    cache.landRecords = [mapped, ...cache.landRecords];
+    return mapped;
+  } catch (error) {
+    if (!isDuplicateLocationError(error)) throw error;
+
+    const duplicateLand = await findExistingLandParcelByLocation({ district, upazila, mouza });
+    if (!duplicateLand) throw error;
+
+    await syncLandOwnership(Number(duplicateLand.id), ownerUserId, record.ownerName, 'Linked duplicate-location parcel to owner from admin form.', verifiedByUserId);
+    const mapped = { ...duplicateLand, ownerName: record.ownerName || duplicateLand.ownerName };
+    cache.landRecords = [mapped, ...cache.landRecords.filter(item => item.id !== mapped.id)];
+    return mapped;
+  }
 };
 
 export const updateLandRecord = async (id: string, updates: Partial<LandRecord>) => {
@@ -670,12 +1118,22 @@ export const getApplications = () => cache.applications;
 
 export const getApplicationById = (id: string) => getApplications().find(a => a.id === id);
 
-export const addApplication = async (app: Application) => {
+export const addApplication = async (
+  app: Application,
+  options?: { currentOwnerId?: string; proposedNewOwnerId?: string },
+) => {
   const applicantId = numericId(app.applicantId);
   if (!applicantId) throw new Error(`Create application: invalid applicant id ${app.applicantId}`);
 
+  const missingDocuments = missingRequiredDocumentTypes(app.documents);
+  if (missingDocuments.length > 0) {
+    throw new Error(`Create application: missing required PDF files for ${missingDocuments.join(', ')}.`);
+  }
+
   const matchingLand = cache.landRecords.find(record => record.plotNumber === app.plotNumber && record.holdingNumber === app.holdingNumber);
   let landId = numericId(matchingLand?.id);
+  const currentOwnerId = numericId(options?.currentOwnerId);
+  const proposedNewOwnerId = numericId(options?.proposedNewOwnerId);
 
   if (!landId) {
     const land = await addLandRecord({
@@ -688,84 +1146,125 @@ export const addApplication = async (app: Application) => {
       mouza: app.mouza,
       landSize: app.landSize,
       ownershipStatus: 'Active',
+    }, {
+      ownerUserId: options?.currentOwnerId,
     });
     landId = numericId(land.id);
   }
 
   if (!landId) throw new Error('Create application: could not resolve land parcel id');
 
-  const inserted = unwrap<DbApplication>(
-    await supabase
-      .from('applications')
-      .insert({
-        application_number: app.id,
-        applicant_user_id: applicantId,
-        land_id: landId,
-        transfer_type: transferToDb(app.transferType),
-        fee_amount: 0,
-        payment_status: 'unpaid',
-        current_status: statusToDb(app.status),
-        submitted_at: app.createdAt,
-      })
-      .select()
-      .single(),
-    'Create application',
-  );
-
-  for (const document of app.documents) {
-    unwrap(
-      await supabase.from('documents').insert({
-        application_id: inserted.application_id,
-        user_id: applicantId,
-        land_id: landId,
-        document_type: documentTypeToDb(document.documentType),
-        file_name: document.name,
-        file_path: `metadata-only/${inserted.application_id}/${document.name}`,
-        mime_type: document.type,
-        file_size: document.size,
-        version_no: 1,
-        verification_status: 'pending',
-        uploaded_at: document.uploadedAt,
-      }),
-      'Create document metadata',
-    );
+  const uploadedDocuments: DocumentFile[] = [];
+  try {
+    for (const document of app.documents) {
+      uploadedDocuments.push({
+        ...document,
+        filePath: await uploadApplicationDocument(app.id, document),
+        localFile: undefined,
+        type: 'application/pdf',
+      });
+    }
+  } catch (error) {
+    await removeUploadedDocuments(uploadedDocuments.map(document => document.filePath || ''));
+    throw error;
   }
 
-  cache.applications = [app, ...cache.applications.filter(existing => existing.id !== app.id)];
-  return app;
+  try {
+    const inserted = unwrap<DbApplication>(
+      await supabase
+        .from('applications')
+        .insert({
+          application_number: app.id,
+          applicant_user_id: applicantId,
+          land_id: landId,
+          transfer_type: transferToDb(app.transferType),
+          fee_amount: 0,
+          payment_status: 'unpaid',
+          current_status: statusToDb(app.status),
+          submitted_at: app.createdAt,
+        })
+        .select()
+        .single(),
+      'Create application',
+    );
+
+    if (proposedNewOwnerId) {
+      unwrap(
+        await supabase.from('application_new_owners').insert({
+          application_id: inserted.application_id,
+          user_id: proposedNewOwnerId,
+          ownership_percentage: 100,
+        }),
+        'Create application new owner',
+      );
+    }
+
+    if (uploadedDocuments.length > 0) {
+      unwrap(
+        await supabase.from('documents').insert(uploadedDocuments.map(document => ({
+          application_id: inserted.application_id,
+          user_id: applicantId,
+          land_id: landId,
+          document_type: documentTypeToDb(document.documentType),
+          file_name: document.name,
+          file_path: document.filePath,
+          mime_type: 'application/pdf',
+          file_size: document.size,
+          version_no: 1,
+          verification_status: 'pending',
+          uploaded_at: document.uploadedAt,
+        }))),
+        'Create document metadata',
+      );
+    }
+  } catch (error) {
+    await removeUploadedDocuments(uploadedDocuments.map(document => document.filePath || ''));
+    throw error;
+  }
+
+  const proposedOwnerProfile = proposedNewOwnerId ? cache.users.find(user => user.id === String(proposedNewOwnerId)) : null;
+  const hydratedApp = {
+    ...app,
+    currentOwner: app.currentOwner,
+    proposedNewOwner: proposedOwnerProfile?.name || app.proposedNewOwner,
+    documents: uploadedDocuments,
+  };
+  cache.applications = [hydratedApp, ...cache.applications.filter(existing => existing.id !== app.id)];
+  return hydratedApp;
 };
 
 export const updateApplication = async (id: string, updates: Partial<Application>) => {
   const current = getApplicationById(id);
   if (!current) throw new Error(`Update application: application ${id} is not loaded`);
-
-  const dbId = numericId(id) || numericId(current.id);
-  if (!dbId && current.id.startsWith('APP-')) {
-    const found = unwrap<DbApplication | null>(
-      await supabase.from('applications').select('*').eq('application_number', current.id).maybeSingle(),
-      'Find application',
-    );
-    if (!found) throw new Error(`Update application: could not find ${id}`);
-    return updateApplication(String(found.application_id), updates);
-  }
-
-  if (!dbId) throw new Error(`Update application: invalid application id ${id}`);
+  const dbApplication = await findDbApplicationByPublicId(current.id) || await findDbApplicationByPublicId(id);
+  if (!dbApplication) throw new Error(`Update application: could not find ${id}`);
 
   const updated = { ...current, ...updates, updatedAt: new Date().toISOString() };
   unwrap(
     await supabase
       .from('applications')
-      .update({
-        current_status: updates.status ? statusToDb(updates.status) : undefined,
-        assigned_survey_officer_id: numericId(updates.assignedSurveyOfficerId),
-        updated_at: updated.updatedAt,
-      })
-      .eq('application_id', dbId),
+      .update(buildApplicationUpdatePayload(updated, dbApplication))
+      .eq('application_id', dbApplication.application_id),
     'Update application',
   );
 
   cache.applications = cache.applications.map(app => app.id === current.id ? updated : app);
   return updated;
+};
+
+export const assignSurveyOfficer = async (applicationId: string, surveyOfficerId: string, actingOfficerId: string) => {
+  const assignedOfficer = getUserById(actingOfficerId);
+  const surveyOfficer = getUserById(surveyOfficerId);
+  if (!assignedOfficer) throw new Error(`Assign survey officer: acting officer ${actingOfficerId} not found`);
+  if (!surveyOfficer || surveyOfficer.role !== 'survey_officer') throw new Error(`Assign survey officer: invalid survey officer ${surveyOfficerId}`);
+
+  return updateApplication(applicationId, {
+    assignedOfficerId: actingOfficerId,
+    assignedOfficerName: assignedOfficer.name,
+    assignedSurveyOfficerId: surveyOfficerId,
+    assignedSurveyOfficerName: surveyOfficer.name,
+    updatedAt: new Date().toISOString(),
+  });
 };
 
 export const changeApplicationStatus = async (id: string, status: ApplicationStatus, actor: string) => {
@@ -844,7 +1343,7 @@ export const addVerificationNote = async (applicationId: string, note: Verificat
         land_id: dbApplication.land_id,
         survey_officer_id: officerId,
         geo_verified: note.isVerified,
-        result: note.isVerified ? 'verified' : 'rejected',
+        result: note.isVerified ? 'passed' : 'failed',
         notes: note.findings,
       })
       .select()
@@ -857,6 +1356,74 @@ export const addVerificationNote = async (applicationId: string, note: Verificat
     const mapped = mapVerification(inserted, new Map(cache.users.map(user => [user.id, user])));
     cache.applications = cache.applications.map(item => item.id === app.id ? { ...item, verificationNotes: [...item.verificationNotes, mapped] } : item);
   }
+};
+
+export const requestClarification = async (applicationId: string, requestedById: string, requestMessage: string) => {
+  const trimmedMessage = requestMessage.trim();
+  if (!trimmedMessage) throw new Error('Clarification message is required.');
+
+  const requesterId = numericId(requestedById);
+  if (!requesterId) throw new Error(`Request clarification: invalid requester id ${requestedById}`);
+
+  const dbApplication = unwrap<DbApplication | null>(
+    await supabase.from('applications').select('*').eq('application_number', applicationId).maybeSingle(),
+    'Find application for clarification',
+  );
+  if (!dbApplication) throw new Error(`Request clarification: could not find application ${applicationId}`);
+
+  const inserted = unwrap<DbClarification>(
+    await supabase
+      .from('clarifications')
+      .insert({
+        application_id: dbApplication.application_id,
+        requested_by: requesterId,
+        request_message: trimmedMessage,
+        status: 'open',
+        requested_at: new Date().toISOString(),
+      })
+      .select()
+      .single(),
+    'Create clarification request',
+  );
+
+  const usersById = new Map(cache.users.map(user => [user.id, user]));
+  const mapped = mapClarification(inserted, usersById);
+  cache.applications = cache.applications.map(item => item.id === applicationId ? { ...item, clarifications: [...item.clarifications, mapped], updatedAt: new Date().toISOString() } : item);
+  return mapped;
+};
+
+export const respondToClarification = async (applicationId: string, clarificationId: string, respondedById: string, responseMessage: string) => {
+  const trimmedMessage = responseMessage.trim();
+  if (!trimmedMessage) throw new Error('Clarification response is required.');
+
+  const dbClarificationId = numericId(clarificationId);
+  const responderId = numericId(respondedById);
+  if (!dbClarificationId) throw new Error(`Respond clarification: invalid clarification id ${clarificationId}`);
+  if (!responderId) throw new Error(`Respond clarification: invalid responder id ${respondedById}`);
+
+  const updated = unwrap<DbClarification>(
+    await supabase
+      .from('clarifications')
+      .update({
+        responded_by: responderId,
+        response_message: trimmedMessage,
+        status: 'answered',
+        responded_at: new Date().toISOString(),
+      })
+      .eq('clarification_id', dbClarificationId)
+      .select()
+      .single(),
+    'Respond to clarification',
+  );
+
+  const usersById = new Map(cache.users.map(user => [user.id, user]));
+  const mapped = mapClarification(updated, usersById);
+  cache.applications = cache.applications.map(item => item.id === applicationId ? {
+    ...item,
+    clarifications: item.clarifications.map(clarification => clarification.id === clarificationId ? mapped : clarification),
+    updatedAt: new Date().toISOString(),
+  } : item);
+  return mapped;
 };
 
 // Notifications
@@ -875,7 +1442,7 @@ export const addNotification = async (notification: Notification) => {
         recipient_user_id: recipientId,
         title: notification.title,
         message: notification.message,
-        type: notification.type,
+        type: notificationTypeToDb(notification),
         deep_link: notification.applicationId ? `/applications/${notification.applicationId}` : null,
         is_read: notification.read,
       })

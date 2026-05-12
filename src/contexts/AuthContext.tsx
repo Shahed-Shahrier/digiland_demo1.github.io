@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { User, UserRole } from '@/types';
-import { addAuditLog, generateId, getUserProfileByAuthId, initializeAppData, refreshAppData } from '@/services/storageService';
+import { addAuditLog, createUserProfile, generateId, getUserProfileByAuthId, initializeAppData, refreshAppData, updateUser } from '@/services/storageService';
 import { supabase } from '@/integrations/supabase/client';
 
 interface AuthContextType {
@@ -18,7 +18,31 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 async function profileForSession(session: Session | null) {
   if (!session?.user.id) return null;
-  return getUserProfileByAuthId(session.user.id, session.user.email);
+  const metadata = session.user.user_metadata || {};
+  const metadataPhone = typeof metadata.phone === 'string' ? metadata.phone : undefined;
+  const metadataNid = typeof metadata.nid_number === 'string' ? metadata.nid_number : typeof metadata.nid === 'string' ? metadata.nid : undefined;
+
+  const existingProfile = await getUserProfileByAuthId(session.user.id, session.user.email);
+  if (existingProfile) {
+    if ((!existingProfile.phone && metadataPhone) || (!existingProfile.nid && metadataNid)) {
+      return updateUser(existingProfile.id, {
+        phone: existingProfile.phone || metadataPhone,
+        nid: existingProfile.nid || metadataNid,
+      });
+    }
+    return existingProfile;
+  }
+
+  if (!session.user.email) return null;
+
+  return createUserProfile({
+    authUserId: session.user.id,
+    name: String(metadata.full_name || metadata.name || session.user.email.split('@')[0] || 'Digi-Land User'),
+    email: session.user.email,
+    phone: metadataPhone,
+    nid: metadataNid,
+    emailVerified: Boolean(session.user.email_confirmed_at),
+  });
 }
 
 async function registrationFieldExists(column: 'phone' | 'nid_number', value: string) {
@@ -72,6 +96,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(nextSession);
       void profileForSession(nextSession)
         .then(profile => {
+          if (profile) {
+            void refreshAppData();
+          }
           if (mounted) setUser(profile);
         })
         .catch(error => {
@@ -158,17 +185,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!data.session) {
       return {
         success: true,
+        needsEmailConfirmation: true,
         error: 'Account created. Please confirm your email, then sign in.',
       };
     }
 
     try {
-      await refreshAppData();
-
-      const profile = await getUserProfileByAuthId(
-        data.user.id,
-        data.user.email,
-      );
+      const profile = await profileForSession(data.session);
 
       if (!profile) {
         return {
@@ -179,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setSession(data.session);
       setUser(profile);
+      await refreshAppData();
 
       return { success: true, user: profile };
     } catch (profileError) {

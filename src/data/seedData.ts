@@ -93,6 +93,7 @@ export const mockApplications: Application[] = [
     comments: [
       { id: 'cmt-1', applicationId: 'APP-2024-001', authorId: 'user-officer-1', authorName: 'Kamal Hossain', authorRole: 'land_officer', comment: 'Documents received. Starting review process.', createdAt: '2024-06-02T09:00:00Z' },
     ],
+    clarifications: [],
     verificationNotes: [],
     statusHistory: [
       { status: 'Pending', timestamp: '2024-06-01T10:05:00Z', actor: 'Rahim Uddin' },
@@ -130,6 +131,7 @@ export const mockApplications: Application[] = [
     comments: [
       { id: 'cmt-2', applicationId: 'APP-2024-002', authorId: 'user-officer-1', authorName: 'Kamal Hossain', authorRole: 'land_officer', comment: 'All checks passed. Approved.', createdAt: '2024-07-20T14:00:00Z' },
     ],
+    clarifications: [],
     verificationNotes: [
       { id: 'vn-1', applicationId: 'APP-2024-002', officerId: 'user-survey-1', officerName: 'Jabbar Mia', findings: 'Land boundaries confirmed. No encroachment detected.', isVerified: true, createdAt: '2024-07-18T11:00:00Z' },
     ],
@@ -170,6 +172,7 @@ export const mockApplications: Application[] = [
     comments: [
       { id: 'cmt-3', applicationId: 'APP-2024-003', authorId: 'user-officer-1', authorName: 'Kamal Hossain', authorRole: 'land_officer', comment: 'Please upload tax receipt and NID copy.', createdAt: '2024-08-07T10:00:00Z' },
     ],
+    clarifications: [],
     verificationNotes: [],
     statusHistory: [
       { status: 'Pending', timestamp: '2024-08-05T10:05:00Z', actor: 'Rahim Uddin' },
@@ -206,6 +209,7 @@ export const mockApplications: Application[] = [
     ],
     status: 'Pending',
     comments: [],
+    clarifications: [],
     verificationNotes: [],
     statusHistory: [
       { status: 'Pending', timestamp: '2024-09-01T10:05:00Z', actor: 'Fatema Begum' },

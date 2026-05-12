@@ -1,16 +1,94 @@
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { getApplicationById } from '@/services/storageService';
+import { useAuth } from '@/contexts/AuthContext';
+import { addAuditLog, addNotification, downloadApplicationDocument, generateId, getApplicationById, respondToClarification } from '@/services/storageService';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { ApplicationTimeline } from '@/components/ApplicationTimeline';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileText, User, MapPin, ArrowRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
+import { FileText, User, MapPin, Loader2 } from 'lucide-react';
 
 export default function ApplicationDetailsPage() {
   const { id } = useParams();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
+  const [clarificationReply, setClarificationReply] = useState('');
+  const [replying, setReplying] = useState(false);
+  const [, setRefresh] = useState(0);
   const app = getApplicationById(id || '');
 
   if (!app) return <DashboardLayout><p className="text-muted-foreground">Application not found.</p></DashboardLayout>;
+  const openClarification = [...app.clarifications].reverse().find(clarification => clarification.status === 'open');
+
+  const openDocument = async (documentId: string) => {
+    const document = app.documents.find(item => item.id === documentId);
+    if (!document) return;
+
+    setOpeningDocumentId(documentId);
+    try {
+      const blob = await downloadApplicationDocument(document);
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error) {
+      toast({
+        title: 'Document Open Failed',
+        description: error instanceof Error ? error.message : 'Could not open this PDF file.',
+        variant: 'destructive',
+      });
+    } finally {
+      setOpeningDocumentId(null);
+    }
+  };
+
+  const handleClarificationReply = async () => {
+    if (!user || !openClarification) return;
+    if (!clarificationReply.trim()) {
+      toast({ title: 'Reply Required', description: 'Write your clarification reply first.', variant: 'destructive' });
+      return;
+    }
+
+    setReplying(true);
+    const now = new Date().toISOString();
+    try {
+      await respondToClarification(app.id, openClarification.id, user.id, clarificationReply);
+      await addAuditLog({
+        id: generateId('log'),
+        timestamp: now,
+        actorName: user.name,
+        actorRole: user.role,
+        actionType: 'Clarification Response',
+        applicationId: app.id,
+        details: `Citizen replied to clarification for ${app.id}`,
+      });
+
+      const officerRecipientId = app.assignedOfficerId || openClarification.requestedById;
+      if (officerRecipientId) {
+        await addNotification({
+          id: generateId('notif'),
+          userId: officerRecipientId,
+          title: 'Clarification Response Received',
+          message: `${app.applicantName} replied to clarification for ${app.id}.`,
+          type: 'info',
+          read: false,
+          applicationId: app.id,
+          createdAt: now,
+        });
+      }
+
+      setClarificationReply('');
+      toast({ title: 'Reply Sent', description: 'Your clarification response has been sent to the land officer.' });
+      setRefresh(refresh => refresh + 1);
+    } catch (error) {
+      toast({ title: 'Reply Failed', description: error instanceof Error ? error.message : 'Could not send clarification response.', variant: 'destructive' });
+    } finally {
+      setReplying(false);
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -58,10 +136,19 @@ export default function ApplicationDetailsPage() {
                   {app.documents.map(doc => (
                     <div key={doc.id} className="flex items-center gap-3 p-3 rounded-lg border">
                       <FileText className="h-8 w-8 text-primary shrink-0" />
-                      <div>
+                      <div className="flex-1">
                         <p className="text-sm font-medium">{doc.documentType}</p>
                         <p className="text-xs text-muted-foreground">{doc.name} — {(doc.size / 1024).toFixed(0)} KB</p>
                       </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={!doc.filePath || doc.filePath.startsWith('metadata-only/') || openingDocumentId === doc.id}
+                        onClick={() => void openDocument(doc.id)}
+                      >
+                        {openingDocumentId === doc.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Open PDF'}
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -94,6 +181,43 @@ export default function ApplicationDetailsPage() {
                     <p className="text-xs text-muted-foreground mt-1">— {v.officerName} • {new Date(v.createdAt).toLocaleString()}</p>
                   </div>
                 ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {app.clarifications.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle>Clarification Thread</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                {[...app.clarifications].reverse().map(clarification => (
+                  <div key={clarification.id} className="rounded-lg border p-3 space-y-2">
+                    <div>
+                      <p className="text-sm font-medium">Officer Request</p>
+                      <p className="text-sm">{clarification.requestMessage}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{new Date(clarification.requestedAt).toLocaleString()} • {clarification.status}</p>
+                    </div>
+                    {clarification.responseMessage && (
+                      <div className="rounded-md bg-muted p-3">
+                        <p className="text-sm">{clarification.responseMessage}</p>
+                        <p className="text-xs text-muted-foreground mt-1">Your reply • {clarification.respondedAt ? new Date(clarification.respondedAt).toLocaleString() : ''}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {openClarification && (
+                  <div className="space-y-3 border-t pt-4">
+                    <p className="text-sm font-medium">Reply to Latest Clarification</p>
+                    <Textarea
+                      placeholder="Write your clarification response..."
+                      value={clarificationReply}
+                      onChange={event => setClarificationReply(event.target.value)}
+                    />
+                    <Button type="button" onClick={() => void handleClarificationReply()} disabled={replying}>
+                      {replying ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending...</> : 'Send Reply'}
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

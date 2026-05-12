@@ -41,6 +41,8 @@ export interface DocumentFile {
   size: number;
   documentType: 'Land Deed' | 'National ID' | 'Tax Receipt' | 'Supporting Document';
   uploadedAt: string;
+  filePath?: string;
+  localFile?: File;
 }
 
 export interface ReviewComment {
@@ -61,6 +63,20 @@ export interface VerificationNote {
   findings: string;
   isVerified: boolean;
   createdAt: string;
+}
+
+export interface ClarificationRecord {
+  id: string;
+  applicationId: string;
+  requestedById: string;
+  requestedByName: string;
+  requestMessage: string;
+  respondedById?: string;
+  respondedByName?: string;
+  responseMessage?: string;
+  status: 'open' | 'answered' | 'closed' | 'cancelled';
+  requestedAt: string;
+  respondedAt?: string;
 }
 
 export interface Application {
@@ -85,8 +101,12 @@ export interface Application {
   remarks: string;
   documents: DocumentFile[];
   status: ApplicationStatus;
+  assignedOfficerId?: string;
+  assignedOfficerName?: string;
   assignedSurveyOfficerId?: string;
+  assignedSurveyOfficerName?: string;
   comments: ReviewComment[];
+  clarifications: ClarificationRecord[];
   verificationNotes: VerificationNote[];
   statusHistory: { status: ApplicationStatus; timestamp: string; actor: string }[];
   createdAt: string;

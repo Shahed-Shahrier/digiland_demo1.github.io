@@ -1,5 +1,6 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { getApplications } from '@/services/storageService';
+import { useEffect, useState } from 'react';
+import { getApplications, refreshAppData } from '@/services/storageService';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -7,7 +8,12 @@ import { Link } from 'react-router-dom';
 
 export default function AssignedVerificationsPage() {
   const { user } = useAuth();
+  const [, setRefresh] = useState(0);
   const assigned = getApplications().filter(a => a.assignedSurveyOfficerId === user?.id);
+
+  useEffect(() => {
+    void refreshAppData().then(() => setRefresh(refresh => refresh + 1));
+  }, []);
 
   return (
     <DashboardLayout>

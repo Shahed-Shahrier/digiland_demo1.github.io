@@ -80,7 +80,7 @@ export default function RegisterPage() {
             </div>
             <div className="space-y-2">
               <Label>NID Number</Label>
-              <Input value={nid} onChange={e => setNid(e.target.value)} placeholder="Required" inputMode="numeric" required />
+              <Input value={nid} onChange={e => setNid(e.target.value)} placeholder="Enter registered NID" autoComplete="off" required />
             </div>
             <Button type="submit" className="w-full">Register</Button>
           </form>

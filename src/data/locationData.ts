@@ -1,3 +1,5 @@
+import type { LandRecord } from '@/types';
+
 // Correlated Bangladesh location data: District → Upazila → Mouza
 export const locationData: Record<string, Record<string, string[]>> = {
   Dhaka: {
@@ -43,7 +45,37 @@ export const locationData: Record<string, Record<string, string[]>> = {
   },
 };
 
-export const getDistricts = () => Object.keys(locationData);
-export const getUpazilas = (district: string) => district ? Object.keys(locationData[district] || {}) : [];
-export const getMouzas = (district: string, upazila: string) =>
-  district && upazila ? (locationData[district]?.[upazila] || []) : [];
+type LocationSource = Pick<LandRecord, 'district' | 'upazila' | 'mouza'>;
+
+function mergedLocationData(extra: LocationSource[] = []) {
+  const merged = Object.entries(locationData).reduce<Record<string, Record<string, string[]>>>((acc, [district, upazilas]) => {
+    acc[district] = Object.entries(upazilas).reduce<Record<string, string[]>>((upazilaAcc, [upazila, mouzas]) => {
+      upazilaAcc[upazila] = [...mouzas];
+      return upazilaAcc;
+    }, {});
+    return acc;
+  }, {});
+
+  for (const location of extra) {
+    const district = location.district?.trim();
+    const upazila = location.upazila?.trim();
+    const mouza = location.mouza?.trim();
+
+    if (!district || !upazila || !mouza) continue;
+
+    merged[district] ||= {};
+    merged[district][upazila] ||= [];
+
+    if (!merged[district][upazila].includes(mouza)) {
+      merged[district][upazila].push(mouza);
+      merged[district][upazila].sort((left, right) => left.localeCompare(right));
+    }
+  }
+
+  return merged;
+}
+
+export const getDistricts = (extra: LocationSource[] = []) => Object.keys(mergedLocationData(extra));
+export const getUpazilas = (district: string, extra: LocationSource[] = []) => district ? Object.keys(mergedLocationData(extra)[district] || {}) : [];
+export const getMouzas = (district: string, upazila: string, extra: LocationSource[] = []) =>
+  district && upazila ? (mergedLocationData(extra)[district]?.[upazila] || []) : [];
