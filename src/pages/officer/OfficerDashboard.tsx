@@ -22,10 +22,10 @@ export default function OfficerDashboard() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        <StatCard title="Total Applications" value={apps.length} icon={FileText} />
-        <StatCard title="Pending Review" value={pending} icon={Clock} />
-        <StatCard title="Under Review" value={underReview} icon={FileText} />
-        <StatCard title="Clarification Requested" value={clarifications} icon={AlertCircle} />
+        <StatCard title="Total Applications" value={apps.length} icon={FileText} to="/officer/applications" />
+        <StatCard title="Pending Review" value={pending} icon={Clock} to="/officer/applications" />
+        <StatCard title="Under Review" value={underReview} icon={FileText} to="/officer/applications" />
+        <StatCard title="Clarification Requested" value={clarifications} icon={AlertCircle} to="/officer/clarifications" />
       </div>
 
       <Card>

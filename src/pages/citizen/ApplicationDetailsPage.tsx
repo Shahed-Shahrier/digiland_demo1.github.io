@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { addAuditLog, addNotification, downloadApplicationDocument, generateId, getApplicationById, respondToClarification } from '@/services/storageService';
+import { addAuditLog, addNotification, applicationMatchesUser, downloadApplicationDocument, generateId, getApplicationById, respondToClarification } from '@/services/storageService';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { ApplicationTimeline } from '@/components/ApplicationTimeline';
@@ -21,7 +21,7 @@ export default function ApplicationDetailsPage() {
   const [, setRefresh] = useState(0);
   const app = getApplicationById(id || '');
 
-  if (!app) return <DashboardLayout><p className="text-muted-foreground">Application not found.</p></DashboardLayout>;
+  if (!app || !applicationMatchesUser(app, user)) return <DashboardLayout><p className="text-muted-foreground">Application not found.</p></DashboardLayout>;
   const openClarification = [...app.clarifications].reverse().find(clarification => clarification.status === 'open');
 
   const openDocument = async (documentId: string) => {

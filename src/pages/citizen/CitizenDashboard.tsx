@@ -1,5 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { getApplications, getNotificationsForUser } from '@/services/storageService';
+import { getApplicationsForUser, getNotificationsForUser } from '@/services/storageService';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { StatCard } from '@/components/StatCard';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -12,7 +12,7 @@ export default function CitizenDashboard() {
   const { user } = useAuth();
   if (!user) return null;
 
-  const apps = getApplications().filter(a => a.applicantId === user.id);
+  const apps = getApplicationsForUser(user);
   const notifs = getNotificationsForUser(user.id).filter(n => !n.read);
   const pending = apps.filter(a => a.status === 'Pending' || a.status === 'Under Review' || a.status === 'Clarification Requested').length;
   const approved = apps.filter(a => a.status === 'Approved').length;
@@ -25,10 +25,10 @@ export default function CitizenDashboard() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        <StatCard title="Total Applications" value={apps.length} icon={FileText} />
-        <StatCard title="Pending" value={pending} icon={Clock} />
-        <StatCard title="Approved" value={approved} icon={CheckCircle2} />
-        <StatCard title="Unread Notifications" value={notifs.length} icon={Bell} />
+        <StatCard title="Total Applications" value={apps.length} icon={FileText} to="/citizen/applications" />
+        <StatCard title="Pending" value={pending} icon={Clock} to="/citizen/applications" />
+        <StatCard title="Approved" value={approved} icon={CheckCircle2} to="/citizen/applications" />
+        <StatCard title="Unread Notifications" value={notifs.length} icon={Bell} to="/citizen/notifications" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

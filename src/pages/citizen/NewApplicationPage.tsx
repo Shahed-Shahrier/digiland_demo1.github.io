@@ -1,4 +1,4 @@
-import { ChangeEvent, useState } from 'react';
+import { ChangeEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/DashboardLayout';
@@ -14,14 +14,15 @@ import {
   addNotification,
   DOCUMENT_MAX_SIZE_BYTES,
   generateId,
-  getLandRecords,
+  getLandRecordsByCurrentOwnerNid,
   getUserProfileByNid,
   REQUIRED_APPLICATION_DOCUMENT_TYPES,
 } from '@/services/storageService';
-import { TransferType, DocumentFile, User } from '@/types';
+import { TransferType, DocumentFile, User, LandRecord } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-import { getDistricts, getUpazilas, getMouzas } from '@/data/locationData';
 import { Search, CheckCircle2, AlertCircle, Upload, Trash2, FileText, Loader2 } from 'lucide-react';
+
+type TransferDirection = 'to_me' | 'from_me';
 
 type NidLookupFieldProps = {
   label: string;
@@ -75,7 +76,7 @@ function NidLookupField({
       {lookupState === 'not_found' && (
         <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 text-sm text-destructive">
           <AlertCircle className="h-4 w-4" />
-          <span>No citizen found with this NID</span>
+          <span>No match found with this NID</span>
         </div>
       )}
     </div>
@@ -87,13 +88,14 @@ export default function NewApplicationPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [step, setStep] = useState(1);
+  const [transferDirection, setTransferDirection] = useState<TransferDirection>('to_me');
 
   const [form, setForm] = useState({
     applicantName: user?.name || '', applicantNid: user?.nid || '', applicantPhone: user?.phone || '',
     applicantEmail: user?.email || '', applicantAddress: user?.address || '',
     plotNumber: '', holdingNumber: '', district: '', upazila: '', mouza: '', landSize: '',
     currentOwnerNid: '', currentOwner: '',
-    proposedNewOwnerNid: '', proposedNewOwner: '',
+    proposedNewOwnerNid: user?.nid || '', proposedNewOwner: user?.name || '',
     transferType: 'Sale' as TransferType,
     reason: '', deedReference: '', remarks: '',
   });
@@ -103,7 +105,11 @@ export default function NewApplicationPage() {
   const [currentOwnerLookupLoading, setCurrentOwnerLookupLoading] = useState(false);
   const [newOwnerLookupLoading, setNewOwnerLookupLoading] = useState(false);
   const [currentOwnerProfile, setCurrentOwnerProfile] = useState<User | null>(null);
-  const [newOwnerProfile, setNewOwnerProfile] = useState<User | null>(null);
+  const [newOwnerProfile, setNewOwnerProfile] = useState<User | null>(user);
+  const [matchedLandRecords, setMatchedLandRecords] = useState<LandRecord[]>([]);
+  const [myLandRecords, setMyLandRecords] = useState<LandRecord[]>([]);
+  const [myLandRecordsLoading, setMyLandRecordsLoading] = useState(false);
+  const [selectedLandRecordId, setSelectedLandRecordId] = useState('');
   const [step3Errors, setStep3Errors] = useState<Record<string, string>>({});
   const [step2Errors, setStep2Errors] = useState<Record<string, string>>({});
   const [documents, setDocuments] = useState<DocumentFile[]>([]);
@@ -111,77 +117,189 @@ export default function NewApplicationPage() {
 
   const set = (field: keyof typeof form, value: string) => setForm(prev => ({ ...prev, [field]: value }));
 
-  // When district changes, reset upazila and mouza
-  const setDistrict = (v: string) => setForm(prev => ({ ...prev, district: v, upazila: '', mouza: '' }));
-  const setUpazila = (v: string) => setForm(prev => ({ ...prev, upazila: v, mouza: '' }));
+  useEffect(() => {
+    if (transferDirection !== 'from_me' || !user?.nid) return;
 
-  const lookupByNid = async (nid: string, type: 'current' | 'new') => {
-    const normalizedNid = nid.trim();
-    if (!normalizedNid) {
-      if (type === 'current') setCurrentOwnerLookup('idle');
-      else setNewOwnerLookup('idle');
+    let mounted = true;
+    setMyLandRecordsLoading(true);
+    void getLandRecordsByCurrentOwnerNid(user.nid)
+      .then(records => {
+        if (mounted) setMyLandRecords(records);
+      })
+      .catch(error => {
+        if (!mounted) return;
+        setMyLandRecords([]);
+        toast({
+          title: 'Could not load your properties',
+          description: error instanceof Error ? error.message : 'Please try again later.',
+          variant: 'destructive',
+        });
+      })
+      .finally(() => {
+        if (mounted) setMyLandRecordsLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [toast, transferDirection, user?.nid]);
+
+  const clearSelectedLandRecord = () => {
+    setSelectedLandRecordId('');
+    setForm(prev => ({
+      ...prev,
+      plotNumber: '',
+      holdingNumber: '',
+      district: '',
+      upazila: '',
+      mouza: '',
+      landSize: '',
+    }));
+  };
+
+  const selectLandRecord = (record: LandRecord) => {
+    setSelectedLandRecordId(record.id);
+    setForm(prev => ({
+      ...prev,
+      plotNumber: record.plotNumber,
+      holdingNumber: record.holdingNumber,
+      district: record.district,
+      upazila: record.upazila,
+      mouza: record.mouza,
+      landSize: record.landSize,
+      currentOwner: record.ownerName,
+    }));
+    setStep2Errors(prev => {
+      const { selectedLandRecord: _selectedLandRecord, ...rest } = prev;
+      return rest;
+    });
+  };
+
+  const handleTransferDirectionChange = (direction: TransferDirection) => {
+    setTransferDirection(direction);
+    setStep2Errors({});
+    setCurrentOwnerLookup('idle');
+    setNewOwnerLookup('idle');
+    setMatchedLandRecords([]);
+    clearSelectedLandRecord();
+
+    if (direction === 'to_me') {
+      setCurrentOwnerProfile(null);
+      setNewOwnerProfile(user);
+      setForm(prev => ({
+        ...prev,
+        currentOwnerNid: '',
+        currentOwner: '',
+        proposedNewOwnerNid: user?.nid || '',
+        proposedNewOwner: user?.name || '',
+      }));
       return;
     }
 
-    if (type === 'current') setCurrentOwnerLookupLoading(true);
-    else setNewOwnerLookupLoading(true);
+    setCurrentOwnerProfile(user);
+    setNewOwnerProfile(null);
+    setForm(prev => ({
+      ...prev,
+      currentOwnerNid: user?.nid || '',
+      currentOwner: user?.name || '',
+      proposedNewOwnerNid: '',
+      proposedNewOwner: '',
+    }));
+  };
+
+  const lookupCurrentOwnerByNid = async (nid: string) => {
+    const normalizedNid = nid.trim();
+    if (!normalizedNid) {
+      setCurrentOwnerLookup('idle');
+      return;
+    }
+
+    setCurrentOwnerLookupLoading(true);
 
     try {
-      const found = await getUserProfileByNid(normalizedNid);
+      const [found, ownerLandRecords] = await Promise.all([
+        getUserProfileByNid(normalizedNid),
+        getLandRecordsByCurrentOwnerNid(normalizedNid),
+      ]);
+
       if (found) {
-        if (type === 'current') {
-          set('currentOwner', found.name);
-          setCurrentOwnerProfile(found);
-          setCurrentOwnerLookup('found');
-        } else {
-          set('proposedNewOwner', found.name);
-          setNewOwnerProfile(found);
-          setNewOwnerLookup('found');
-        }
+        set('currentOwner', found.name);
+        setCurrentOwnerProfile(found);
+        setMatchedLandRecords(ownerLandRecords);
+        clearSelectedLandRecord();
+        setCurrentOwnerLookup(ownerLandRecords.length > 0 ? 'found' : 'not_found');
       } else {
-        if (type === 'current') {
-          set('currentOwner', '');
-          setCurrentOwnerProfile(null);
-          setCurrentOwnerLookup('not_found');
-        } else {
-          set('proposedNewOwner', '');
-          setNewOwnerProfile(null);
-          setNewOwnerLookup('not_found');
-        }
-      }
-    } catch (error) {
-      if (type === 'current') {
         set('currentOwner', '');
         setCurrentOwnerProfile(null);
+        setMatchedLandRecords([]);
+        clearSelectedLandRecord();
         setCurrentOwnerLookup('not_found');
-      } else {
-        set('proposedNewOwner', '');
-        setNewOwnerProfile(null);
-        setNewOwnerLookup('not_found');
       }
+    } catch (error) {
+      set('currentOwner', '');
+      setCurrentOwnerProfile(null);
+      setMatchedLandRecords([]);
+      clearSelectedLandRecord();
+      setCurrentOwnerLookup('not_found');
       toast({
         title: 'NID Search Failed',
         description: error instanceof Error ? error.message : 'Could not search the database for this NID.',
         variant: 'destructive',
       });
     } finally {
-      if (type === 'current') setCurrentOwnerLookupLoading(false);
-      else setNewOwnerLookupLoading(false);
+      setCurrentOwnerLookupLoading(false);
+    }
+  };
+
+  const lookupNewOwnerByNid = async (nid: string) => {
+    const normalizedNid = nid.trim();
+    if (!normalizedNid) {
+      setNewOwnerLookup('idle');
+      return;
+    }
+
+    setNewOwnerLookupLoading(true);
+
+    try {
+      const found = await getUserProfileByNid(normalizedNid);
+      if (found) {
+        set('proposedNewOwner', found.name);
+        setNewOwnerProfile(found);
+        setNewOwnerLookup('found');
+      } else {
+        set('proposedNewOwner', '');
+        setNewOwnerProfile(null);
+        setNewOwnerLookup('not_found');
+      }
+    } catch (error) {
+      set('proposedNewOwner', '');
+      setNewOwnerProfile(null);
+      setNewOwnerLookup('not_found');
+      toast({
+        title: 'NID Search Failed',
+        description: error instanceof Error ? error.message : 'Could not search the database for this NID.',
+        variant: 'destructive',
+      });
+    } finally {
+      setNewOwnerLookupLoading(false);
     }
   };
 
   const validateStep2 = (): boolean => {
     const errors: Record<string, string> = {};
-    if (!form.plotNumber.trim()) errors.plotNumber = 'Plot number is required';
-    if (!form.holdingNumber.trim()) errors.holdingNumber = 'Holding number is required';
-    if (!form.district) errors.district = 'District is required';
-    if (!form.upazila) errors.upazila = 'Upazila is required';
-    if (!form.mouza) errors.mouza = 'Mouza is required';
-    if (!form.landSize.trim()) errors.landSize = 'Land size is required';
-    if (!form.currentOwnerNid.trim()) errors.currentOwnerNid = 'Current owner NID is required';
-    if (currentOwnerLookup !== 'found') errors.currentOwnerNid = 'Current owner not found. Please enter a valid NID.';
-    if (!form.proposedNewOwnerNid.trim()) errors.proposedNewOwnerNid = 'Proposed new owner NID is required';
-    if (newOwnerLookup !== 'found') errors.proposedNewOwnerNid = 'Proposed new owner not found. Please enter a valid NID.';
+    if (transferDirection === 'to_me') {
+      if (!form.currentOwnerNid.trim()) errors.currentOwnerNid = 'Current owner NID is required';
+      if (currentOwnerLookup !== 'found') errors.currentOwnerNid = 'No land records found for this current owner NID.';
+      if (!user?.nid) errors.proposedNewOwnerNid = 'Your profile must have a NID before creating an application.';
+      if (form.proposedNewOwnerNid !== user?.nid) errors.proposedNewOwnerNid = 'Proposed new owner must be your current user NID.';
+    } else {
+      if (!user?.nid) errors.currentOwnerNid = 'Your profile must have a NID before transferring from your properties.';
+      if (form.currentOwnerNid !== user?.nid) errors.currentOwnerNid = 'Current owner must be your current user NID.';
+      if (!form.proposedNewOwnerNid.trim()) errors.proposedNewOwnerNid = 'Proposed new owner NID is required.';
+      if (newOwnerLookup !== 'found') errors.proposedNewOwnerNid = 'Proposed new owner not found. Please enter a valid NID.';
+      if (form.proposedNewOwnerNid === user?.nid) errors.proposedNewOwnerNid = 'Proposed new owner must be a different citizen.';
+    }
+    if (!selectedLandRecordId) errors.selectedLandRecord = 'Choose one land property from the matched list.';
     setStep2Errors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -297,11 +415,6 @@ export default function NewApplicationPage() {
     }
   };
 
-  const landRecords = getLandRecords();
-  const districts = getDistricts(landRecords);
-  const upazilas = getUpazilas(form.district, landRecords);
-  const mouzas = getMouzas(form.district, form.upazila, landRecords);
-
   return (
     <DashboardLayout>
       <div className="page-header">
@@ -333,74 +446,157 @@ export default function NewApplicationPage() {
           )}
           {step === 2 && (
             <>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Plot Number <span className="text-destructive">*</span></Label>
-                  <Input value={form.plotNumber} onChange={e => set('plotNumber', e.target.value)} className={step2Errors.plotNumber ? 'border-destructive' : ''} />
-                  {step2Errors.plotNumber && <p className="text-xs text-destructive">{step2Errors.plotNumber}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Holding Number <span className="text-destructive">*</span></Label>
-                  <Input value={form.holdingNumber} onChange={e => set('holdingNumber', e.target.value)} className={step2Errors.holdingNumber ? 'border-destructive' : ''} />
-                  {step2Errors.holdingNumber && <p className="text-xs text-destructive">{step2Errors.holdingNumber}</p>}
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>District <span className="text-destructive">*</span></Label>
-                  <Select value={form.district} onValueChange={setDistrict}>
-                    <SelectTrigger className={step2Errors.district ? 'border-destructive' : ''}><SelectValue placeholder="Select district" /></SelectTrigger>
-                    <SelectContent>
-                      {districts.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  {step2Errors.district && <p className="text-xs text-destructive">{step2Errors.district}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Upazila <span className="text-destructive">*</span></Label>
-                  <Select value={form.upazila} onValueChange={setUpazila} disabled={!form.district}>
-                    <SelectTrigger className={step2Errors.upazila ? 'border-destructive' : ''}><SelectValue placeholder="Select upazila" /></SelectTrigger>
-                    <SelectContent>
-                      {upazilas.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  {step2Errors.upazila && <p className="text-xs text-destructive">{step2Errors.upazila}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Mouza <span className="text-destructive">*</span></Label>
-                  <Select value={form.mouza} onValueChange={v => set('mouza', v)} disabled={!form.upazila}>
-                    <SelectTrigger className={step2Errors.mouza ? 'border-destructive' : ''}><SelectValue placeholder="Select mouza" /></SelectTrigger>
-                    <SelectContent>
-                      {mouzas.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  {step2Errors.mouza && <p className="text-xs text-destructive">{step2Errors.mouza}</p>}
-                </div>
-              </div>
               <div className="space-y-2">
-                <Label>Land Size <span className="text-destructive">*</span></Label>
-                <Input value={form.landSize} onChange={e => set('landSize', e.target.value)} placeholder="e.g. 5 katha" className={step2Errors.landSize ? 'border-destructive' : ''} />
-                {step2Errors.landSize && <p className="text-xs text-destructive">{step2Errors.landSize}</p>}
+                <Label>Application Direction <span className="text-destructive">*</span></Label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => handleTransferDirectionChange('to_me')}
+                    className={`rounded-lg border p-3 text-left transition-colors hover:border-primary hover:bg-primary/5 ${transferDirection === 'to_me' ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}
+                  >
+                    <p className="text-sm font-semibold">Transfer to me</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Search the current owner NID, then choose one of their properties.</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTransferDirectionChange('from_me')}
+                    className={`rounded-lg border p-3 text-left transition-colors hover:border-primary hover:bg-primary/5 ${transferDirection === 'from_me' ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}
+                  >
+                    <p className="text-sm font-semibold">Transfer from me</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Choose from properties listed with your NID.</p>
+                  </button>
+                </div>
               </div>
 
-              <div className="border-t pt-4 mt-2">
-                <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Ownership Details</h3>
+              <div>
+                <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">
+                  {transferDirection === 'to_me' ? 'Current Owner Property Search' : 'Your Property Selection'}
+                </h3>
                 <div className="space-y-4">
-                  <NidLookupField
-                    label="Current Owner"
-                    value={form.currentOwnerNid}
-                    nameValue={form.currentOwner}
-                    lookupState={currentOwnerLookup}
-                    loading={currentOwnerLookupLoading}
-                    onChange={value => {
-                      set('currentOwnerNid', value);
-                      setCurrentOwnerLookup('idle');
-                      set('currentOwner', '');
-                      setCurrentOwnerProfile(null);
-                    }}
-                    onLookup={() => void lookupByNid(form.currentOwnerNid, 'current')}
-                    error={step2Errors.currentOwnerNid}
-                  />
+                  {transferDirection === 'to_me' ? (
+                    <NidLookupField
+                      label="Current Owner"
+                      value={form.currentOwnerNid}
+                      nameValue={form.currentOwner}
+                      lookupState={currentOwnerLookup}
+                      loading={currentOwnerLookupLoading}
+                      onChange={value => {
+                        set('currentOwnerNid', value);
+                        setCurrentOwnerLookup('idle');
+                        set('currentOwner', '');
+                        setCurrentOwnerProfile(null);
+                        setMatchedLandRecords([]);
+                        clearSelectedLandRecord();
+                      }}
+                      onLookup={() => void lookupCurrentOwnerByNid(form.currentOwnerNid)}
+                      error={step2Errors.currentOwnerNid}
+                    />
+                  ) : (
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Current Owner</p>
+                          <p className="text-sm font-medium">{user?.name || 'Current user'}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">NID Number</p>
+                          <p className="text-sm font-medium">{user?.nid || 'N/A'}</p>
+                        </div>
+                      </div>
+                      {step2Errors.currentOwnerNid && <p className="mt-2 text-xs text-destructive">{step2Errors.currentOwnerNid}</p>}
+                    </div>
+                  )}
+
+                  {transferDirection === 'from_me' && myLandRecordsLoading && (
+                    <div className="flex items-center gap-2 rounded-lg border p-3 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading your properties...
+                    </div>
+                  )}
+
+                  {transferDirection === 'from_me' && !myLandRecordsLoading && user?.nid && myLandRecords.length === 0 && (
+                    <div className="rounded-lg border p-3 text-sm text-muted-foreground">
+                      No properties are currently listed with your NID.
+                    </div>
+                  )}
+
+                  {((transferDirection === 'to_me' && matchedLandRecords.length > 0) ||
+                    (transferDirection === 'from_me' && myLandRecords.length > 0)) && (
+                    <div className="space-y-2">
+                      <Label>Choose Property <span className="text-destructive">*</span></Label>
+                      <div className="space-y-2">
+                        {(transferDirection === 'to_me' ? matchedLandRecords : myLandRecords).map(record => {
+                          const selected = record.id === selectedLandRecordId;
+                          return (
+                            <button
+                              key={record.id}
+                              type="button"
+                              onClick={() => selectLandRecord(record)}
+                              className={`w-full rounded-lg border p-3 text-left transition-colors hover:border-primary hover:bg-primary/5 ${selected ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold">Plot {record.plotNumber} • Holding {record.holdingNumber || 'N/A'}</p>
+                                  <p className="mt-1 text-xs text-muted-foreground">{record.mouza}, {record.upazila}, {record.district}</p>
+                                  <p className="mt-1 text-xs text-muted-foreground">Land size: {record.landSize || 'N/A'} • Status: {record.ownershipStatus}</p>
+                                </div>
+                                {selected && <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {step2Errors.selectedLandRecord && <p className="text-xs text-destructive">{step2Errors.selectedLandRecord}</p>}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {selectedLandRecordId && (
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Selected Land Details</h3>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Current Owner</p>
+                      <p className="text-sm font-medium">{form.currentOwner}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Plot Number</p>
+                      <p className="text-sm font-medium">{form.plotNumber}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Holding Number</p>
+                      <p className="text-sm font-medium">{form.holdingNumber || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Land Size</p>
+                      <p className="text-sm font-medium">{form.landSize || 'N/A'}</p>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <p className="text-xs text-muted-foreground">Location</p>
+                      <p className="text-sm font-medium">{form.mouza}, {form.upazila}, {form.district}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t pt-4 mt-2">
+                <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">New Owner Details</h3>
+                {transferDirection === 'to_me' ? (
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Proposed New Owner</p>
+                        <p className="text-sm font-medium">{form.proposedNewOwner || user?.name || 'Current user'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">NID Number</p>
+                        <p className="text-sm font-medium">{form.proposedNewOwnerNid || 'N/A'}</p>
+                      </div>
+                    </div>
+                    {step2Errors.proposedNewOwnerNid && <p className="mt-2 text-xs text-destructive">{step2Errors.proposedNewOwnerNid}</p>}
+                  </div>
+                ) : (
                   <NidLookupField
                     label="Proposed New Owner"
                     value={form.proposedNewOwnerNid}
@@ -413,13 +609,15 @@ export default function NewApplicationPage() {
                       set('proposedNewOwner', '');
                       setNewOwnerProfile(null);
                     }}
-                    onLookup={() => void lookupByNid(form.proposedNewOwnerNid, 'new')}
+                    onLookup={() => void lookupNewOwnerByNid(form.proposedNewOwnerNid)}
                     error={step2Errors.proposedNewOwnerNid}
                   />
-                </div>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
-                Search uses the Supabase users table by NID number.
+                {transferDirection === 'to_me'
+                  ? "Land details are filled from the selected property matched to the current owner's NID."
+                  : 'Land details are filled from the selected property listed with your NID.'}
               </p>
             </>
           )}

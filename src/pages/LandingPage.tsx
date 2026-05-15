@@ -1,8 +1,24 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { MapPin, FileText, Search, Shield, ArrowRight, CheckCircle2, Users, Globe } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { FeatureKey, getFeaturePath } from '@/lib/featureRoutes';
+import { MapPin, FileText, Search, Shield, ArrowRight, CheckCircle2, Globe } from 'lucide-react';
 
 export default function LandingPage() {
+  const { user, isAuthenticated } = useAuth();
+
+  const features: Array<{ icon: typeof Search; key: FeatureKey; title: string; desc: string }> = [
+    { icon: Search, key: 'land-search', title: 'Land Search', desc: 'Search records by plot or holding number instantly.' },
+    { icon: FileText, key: 'digital-applications', title: 'Digital Applications', desc: 'Submit mutation applications with document uploads.' },
+    { icon: Shield, key: 'officer-verification', title: 'Officer Verification', desc: 'Multi-step review by land and survey officers.' },
+    { icon: CheckCircle2, key: 'status-tracking', title: 'Status Tracking', desc: 'Real-time updates on your application progress.' },
+  ];
+
+  const featureHref = (feature: FeatureKey) => {
+    if (isAuthenticated && user) return getFeaturePath(feature, user.role);
+    return `/login?feature=${feature}`;
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Hero */}
@@ -39,7 +55,7 @@ export default function LandingPage() {
               <Link to="/register">Get Started <ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>
             <Button size="lg" variant="outline" asChild>
-              <Link to="/login">Demo Login</Link>
+              <Link to="/login">Login</Link>
             </Button>
           </div>
         </div>
@@ -50,41 +66,14 @@ export default function LandingPage() {
         <div className="container">
           <h2 className="text-2xl font-bold text-center mb-12">Platform Features</h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
-            {[
-              { icon: Search, title: 'Land Search', desc: 'Search records by plot or holding number instantly.' },
-              { icon: FileText, title: 'Digital Applications', desc: 'Submit mutation applications with document uploads.' },
-              { icon: Shield, title: 'Officer Verification', desc: 'Multi-step review by land and survey officers.' },
-              { icon: CheckCircle2, title: 'Status Tracking', desc: 'Real-time updates on your application progress.' },
-            ].map(f => (
-              <div key={f.title} className="rounded-xl border bg-card p-6 text-center">
+            {features.map(f => (
+              <Link key={f.title} to={featureHref(f.key)} className="rounded-xl border bg-card p-6 text-center transition-colors hover:border-primary hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
                 <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
                   <f.icon className="h-6 w-6 text-primary" />
                 </div>
                 <h3 className="font-semibold mb-2">{f.title}</h3>
                 <p className="text-sm text-muted-foreground">{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Demo Accounts */}
-      <section className="py-20 border-t">
-        <div className="container max-w-3xl">
-          <h2 className="text-2xl font-bold text-center mb-8">Demo Accounts</h2>
-          <div className="grid sm:grid-cols-2 gap-4">
-            {[
-              { role: 'Citizen', email: 'nusrat.jahan@digiland.demo' },
-              { role: 'Citizen', email: 'abdul.karim@digiland.demo' },
-              { role: 'Land Officer', email: 'sadia.islam@digiland.demo' },
-              { role: 'Survey Officer', email: 'rahim.uddin@digiland.demo' },
-              { role: 'Admin', email: 'farhana.akter@digiland.demo' },
-              { role: 'Super Admin', email: 'shahed.admin@digiland.demo' },
-            ].map(d => (
-              <div key={d.email} className="rounded-lg border bg-card p-4">
-                <p className="font-semibold text-sm">{d.role}</p>
-                <p className="text-xs text-muted-foreground mt-1">{d.email}</p>
-              </div>
+              </Link>
             ))}
           </div>
         </div>

@@ -16,7 +16,7 @@ import { getDistricts, getMouzas, getUpazilas } from '@/data/locationData';
 
 export default function LandRecordsManagementPage() {
   const { user } = useAuth();
-  const [query, setQuery] = useState('');
+  const [districtFilter, setDistrictFilter] = useState('all');
   const [, setRefresh] = useState(0);
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
@@ -26,10 +26,11 @@ export default function LandRecordsManagementPage() {
   const [ownerProfile, setOwnerProfile] = useState<User | null>(null);
   const formFields: Array<'ownerName' | 'plotNumber' | 'holdingNumber' | 'landSize'> = ['ownerName', 'plotNumber', 'holdingNumber', 'landSize'];
 
-  const records = getLandRecords().filter(r => r.plotNumber.toLowerCase().includes(query.toLowerCase()) || r.ownerName.toLowerCase().includes(query.toLowerCase()));
-  const districts = getDistricts(getLandRecords());
-  const upazilas = getUpazilas(form.district, getLandRecords());
-  const mouzas = getMouzas(form.district, form.upazila, getLandRecords());
+  const allRecords = getLandRecords();
+  const districts = getDistricts(allRecords);
+  const records = districtFilter === 'all' ? allRecords : allRecords.filter(record => record.district === districtFilter);
+  const upazilas = getUpazilas(form.district, allRecords);
+  const mouzas = getMouzas(form.district, form.upazila, allRecords);
 
   const handleOwnerLookup = async () => {
     const normalizedNid = form.ownerNid.trim();
@@ -196,13 +197,29 @@ export default function LandRecordsManagementPage() {
         </Dialog>
       </div>
 
-      <div className="relative max-w-md mb-6">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input className="pl-10" placeholder="Search records..." value={query} onChange={e => setQuery(e.target.value)} />
+      <div className="mb-6 max-w-md space-y-2">
+        <Label>Filter by District</Label>
+        <Select value={districtFilter} onValueChange={setDistrictFilter}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select district" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All districts</SelectItem>
+            {districts.map(district => (
+              <SelectItem key={district} value={district}>{district}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">
-        {records.map(r => (
+        {records.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              No land records found for this district.
+            </CardContent>
+          </Card>
+        ) : records.map(r => (
           <Card key={r.id}>
             <CardContent className="flex items-center justify-between py-3">
               <div>

@@ -1,5 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { getApplications } from '@/services/storageService';
+import { getApplicationsForUser } from '@/services/storageService';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom';
 
 export default function MyApplicationsPage() {
   const { user } = useAuth();
-  const apps = getApplications().filter(a => a.applicantId === user?.id);
+  const apps = getApplicationsForUser(user);
 
   return (
     <DashboardLayout>

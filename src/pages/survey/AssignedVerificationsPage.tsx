@@ -4,12 +4,24 @@ import { getApplications, refreshAppData } from '@/services/storageService';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Card, CardContent } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ApplicationStatus, TransferType } from '@/types';
 import { Link } from 'react-router-dom';
 
 export default function AssignedVerificationsPage() {
   const { user } = useAuth();
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [, setRefresh] = useState(0);
-  const assigned = getApplications().filter(a => a.assignedSurveyOfficerId === user?.id);
+  const transferTypes: TransferType[] = ['Sale', 'Inheritance', 'Gift', 'Court Order', 'Government Acquisition'];
+  const statuses: ApplicationStatus[] = ['Pending', 'Under Review', 'Clarification Requested', 'Verified', 'Approved', 'Rejected'];
+  const assigned = getApplications().filter(app =>
+    user?.role === 'admin'
+      ? app.assignedSurveyOfficerId || app.status === 'Under Review' || app.status === 'Verified'
+      : app.assignedSurveyOfficerId === user?.id,
+  )
+    .filter(app => typeFilter === 'all' || app.transferType === typeFilter)
+    .filter(app => statusFilter === 'all' || app.status === statusFilter);
 
   useEffect(() => {
     void refreshAppData().then(() => setRefresh(refresh => refresh + 1));
@@ -19,7 +31,28 @@ export default function AssignedVerificationsPage() {
     <DashboardLayout>
       <div className="page-header">
         <h1 className="page-title">Assigned Verifications</h1>
-        <p className="page-description">{assigned.length} cases assigned</p>
+        <p className="page-description">{user?.role === 'admin' ? `${assigned.length} verification case(s)` : `${assigned.length} cases assigned`}</p>
+      </div>
+
+      <div className="mb-6 flex max-w-2xl flex-wrap gap-3">
+        <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <SelectTrigger className="w-64"><SelectValue placeholder="Filter by application type" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Application Types</SelectItem>
+            {transferTypes.map(type => (
+              <SelectItem key={type} value={type}>{type}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-56"><SelectValue placeholder="Filter by status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            {statuses.map(status => (
+              <SelectItem key={status} value={status}>{status}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-3">
@@ -31,7 +64,7 @@ export default function AssignedVerificationsPage() {
               <CardContent className="flex items-center justify-between py-4">
                 <div>
                   <p className="font-semibold">{app.id} — {app.applicantName}</p>
-                  <p className="text-sm text-muted-foreground">Plot: {app.plotNumber} • {app.district}, {app.upazila}</p>
+                  <p className="text-sm text-muted-foreground">{app.transferType} • Plot: {app.plotNumber} • {app.district}, {app.upazila}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {app.verificationNotes.some(v => v.isVerified) && <span className="text-xs text-success font-medium">✓ Verified</span>}

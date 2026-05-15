@@ -32,10 +32,10 @@ export default function AdminDashboard() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        <StatCard title="Total Users" value={users.length} icon={Users} />
-        <StatCard title="Land Records" value={records.length} icon={Database} />
-        <StatCard title="Applications" value={apps.length} icon={FileText} />
-        <StatCard title="Audit Entries" value={logs.length} icon={Shield} />
+        <StatCard title="Total Users" value={users.length} icon={Users} to="/admin/users" />
+        <StatCard title="Land Records" value={records.length} icon={Database} to="/admin/land-records" />
+        <StatCard title="Applications" value={apps.length} icon={FileText} to="/officer/applications" />
+        <StatCard title="Audit Entries" value={logs.length} icon={Shield} to="/admin/audit-log" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

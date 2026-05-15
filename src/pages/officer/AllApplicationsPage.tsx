@@ -7,13 +7,16 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
-import { ApplicationStatus } from '@/types';
+import { ApplicationStatus, TransferType } from '@/types';
 
 export default function AllApplicationsPage() {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const transferTypes: TransferType[] = ['Sale', 'Inheritance', 'Gift', 'Court Order', 'Government Acquisition'];
   const apps = getApplications()
     .filter(a => statusFilter === 'all' || a.status === statusFilter)
+    .filter(a => typeFilter === 'all' || a.transferType === typeFilter)
     .filter(a =>
       a.id.toLowerCase().includes(query.toLowerCase()) ||
       a.applicantName.toLowerCase().includes(query.toLowerCase()) ||
@@ -41,6 +44,15 @@ export default function AllApplicationsPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <SelectTrigger className="w-56"><SelectValue placeholder="Filter by type" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Application Types</SelectItem>
+            {transferTypes.map(type => (
+              <SelectItem key={type} value={type}>{type}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-3">
@@ -51,7 +63,7 @@ export default function AllApplicationsPage() {
                 <div>
                   <p className="font-semibold">{app.id}</p>
                   <p className="text-sm text-muted-foreground">{app.applicantName} • Plot: {app.plotNumber} • {app.district}</p>
-                  <p className="text-xs text-muted-foreground">Updated: {new Date(app.updatedAt).toLocaleDateString()}</p>
+                  <p className="text-xs text-muted-foreground">{app.transferType} • Updated: {new Date(app.updatedAt).toLocaleDateString()}</p>
                 </div>
                 <StatusBadge status={app.status} />
               </CardContent>
