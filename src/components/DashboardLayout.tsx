@@ -1,10 +1,10 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { Bell, LogOut, Menu, User, Home, FileText, Search, PlusCircle, ClipboardList, Shield, Users, Database, BarChart3, CheckSquare, MapPin, Settings } from 'lucide-react';
+import { Bell, LogOut, Menu, User, Home, FileText, Search, PlusCircle, ClipboardList, Shield, Users, Database, BarChart3, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { getNotificationsForUser } from '@/services/storageService';
-import { useState, ReactNode } from 'react';
+import { useEffect, useState, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 const roleNavItems = {
@@ -12,6 +12,7 @@ const roleNavItems = {
     { label: 'Dashboard', icon: Home, path: '/citizen' },
     { label: 'New Application', icon: PlusCircle, path: '/citizen/new-application' },
     { label: 'My Applications', icon: FileText, path: '/citizen/applications' },
+    { label: 'My Properties', icon: MapPin, path: '/citizen/properties' },
     { label: 'Land Search', icon: Search, path: '/citizen/land-search' },
     { label: 'Notifications', icon: Bell, path: '/citizen/notifications' },
     { label: 'Profile', icon: User, path: '/citizen/profile' },
@@ -27,6 +28,9 @@ const roleNavItems = {
   ],
   admin: [
     { label: 'Dashboard', icon: Home, path: '/admin' },
+    { label: 'Review Applications', icon: FileText, path: '/officer/applications' },
+    { label: 'Clarifications', icon: ClipboardList, path: '/officer/clarifications' },
+    { label: 'Survey Cases', icon: MapPin, path: '/survey/verifications' },
     { label: 'Users', icon: Users, path: '/admin/users' },
     { label: 'Land Records', icon: Database, path: '/admin/land-records' },
     { label: 'Audit Log', icon: Shield, path: '/admin/audit-log' },
@@ -34,11 +38,21 @@ const roleNavItems = {
   ],
 };
 
+type NavMode = 'top' | 'side';
+
 export function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [navMode, setNavMode] = useState<NavMode>(() => {
+    if (typeof window === 'undefined') return 'top';
+    return window.localStorage.getItem('digiland-nav-mode') === 'side' ? 'side' : 'top';
+  });
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    window.localStorage.setItem('digiland-nav-mode', navMode);
+  }, [navMode]);
 
   if (!user) return null;
   const navItems = roleNavItems[user.role];
@@ -56,6 +70,75 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
     admin: 'Administrator',
   }[user.role];
 
+  const renderNavItem = (
+    item: (typeof roleNavItems)[keyof typeof roleNavItems][number],
+    mode: NavMode,
+  ) => {
+    const active = location.pathname === item.path;
+    const isNotifications = item.label === 'Notifications';
+
+    return (
+      <Link
+        key={item.path}
+        to={item.path}
+        className={cn(
+          "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+          mode === 'top'
+            ? active
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            : active
+              ? "bg-sidebar-accent text-sidebar-accent-foreground"
+              : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
+          mode === 'top' && "shrink-0",
+          mode === 'side' && "gap-3 py-2.5",
+        )}
+      >
+        <item.icon className="h-4 w-4 shrink-0" />
+        {(mode === 'top' || sidebarOpen) && <span>{item.label}</span>}
+        {(mode === 'top' || sidebarOpen) && isNotifications && unreadCount > 0 && (
+          <Badge variant="destructive" className="h-5 min-w-[20px] px-1 text-xs">{unreadCount}</Badge>
+        )}
+      </Link>
+    );
+  };
+
+  if (navMode === 'top') {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
+          <div className="flex min-h-16 items-center gap-3 px-4 sm:px-6">
+            <Link to="/" className="flex shrink-0 items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+                <MapPin className="h-4 w-4 text-primary-foreground" />
+              </div>
+              <span className="font-bold text-lg">Digi-Land</span>
+            </Link>
+
+            <nav className="flex flex-1 items-center gap-1 overflow-x-auto px-2">
+              {navItems.map(item => renderNavItem(item, 'top'))}
+            </nav>
+
+            <div className="hidden shrink-0 text-right sm:block">
+              <p className="max-w-36 truncate text-sm font-medium">{user.name}</p>
+              <p className="text-xs text-muted-foreground">{roleLabel}</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setNavMode('side')}>
+              <Menu className="mr-2 h-4 w-4" />
+              Side Nav
+            </Button>
+            <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Logout">
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
+        </header>
+        <main className="p-4 animate-fade-in sm:p-6">
+          {children}
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex bg-background">
       {/* Sidebar */}
@@ -71,29 +154,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="flex-1 space-y-1 p-3 overflow-y-auto">
-          {navItems.map(item => {
-            const active = location.pathname === item.path;
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
-                )}
-              >
-                <item.icon className="h-4 w-4 shrink-0" />
-                {sidebarOpen && (
-                  <span className="flex-1">{item.label}</span>
-                )}
-                {sidebarOpen && item.label === 'Notifications' && unreadCount > 0 && (
-                  <Badge variant="destructive" className="h-5 min-w-[20px] text-xs px-1">{unreadCount}</Badge>
-                )}
-              </Link>
-            );
-          })}
+          {navItems.map(item => renderNavItem(item, 'side'))}
         </nav>
 
         <div className="border-t border-sidebar-border p-3">
@@ -118,6 +179,9 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
         <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background/95 backdrop-blur px-6">
           <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(!sidebarOpen)}>
             <Menu className="h-5 w-5" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setNavMode('top')}>
+            Top Nav
           </Button>
           <div className="flex-1" />
           <span className="text-xs text-muted-foreground hidden sm:block">Prototype — Academic Use Only</span>

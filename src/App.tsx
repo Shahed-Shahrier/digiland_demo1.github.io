@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HashRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { RouteLoadingIndicator } from "@/components/RouteLoadingIndicator";
 
 import LandingPage from "@/pages/LandingPage";
 import LoginPage from "@/pages/LoginPage";
@@ -15,6 +16,7 @@ import CitizenDashboard from "@/pages/citizen/CitizenDashboard";
 import NewApplicationPage from "@/pages/citizen/NewApplicationPage";
 import MyApplicationsPage from "@/pages/citizen/MyApplicationsPage";
 import ApplicationDetailsPage from "@/pages/citizen/ApplicationDetailsPage";
+import MyPropertiesPage from "@/pages/citizen/MyPropertiesPage";
 import LandSearchPage from "@/pages/citizen/LandSearchPage";
 import NotificationsPage from "@/pages/citizen/NotificationsPage";
 import ProfilePage from "@/pages/citizen/ProfilePage";
@@ -43,6 +45,7 @@ const App = () => (
       <Sonner />
       <AuthProvider>
         <HashRouter>
+          <RouteLoadingIndicator />
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
@@ -53,20 +56,21 @@ const App = () => (
             <Route path="/citizen/new-application" element={<ProtectedRoute allowedRoles={['citizen']}><NewApplicationPage /></ProtectedRoute>} />
             <Route path="/citizen/applications" element={<ProtectedRoute allowedRoles={['citizen']}><MyApplicationsPage /></ProtectedRoute>} />
             <Route path="/citizen/applications/:id" element={<ProtectedRoute allowedRoles={['citizen']}><ApplicationDetailsPage /></ProtectedRoute>} />
+            <Route path="/citizen/properties" element={<ProtectedRoute allowedRoles={['citizen']}><MyPropertiesPage /></ProtectedRoute>} />
             <Route path="/citizen/land-search" element={<ProtectedRoute allowedRoles={['citizen']}><LandSearchPage /></ProtectedRoute>} />
             <Route path="/citizen/notifications" element={<ProtectedRoute allowedRoles={['citizen']}><NotificationsPage /></ProtectedRoute>} />
             <Route path="/citizen/profile" element={<ProtectedRoute allowedRoles={['citizen']}><ProfilePage /></ProtectedRoute>} />
 
             {/* Land Officer */}
-            <Route path="/officer" element={<ProtectedRoute allowedRoles={['land_officer']}><OfficerDashboard /></ProtectedRoute>} />
-            <Route path="/officer/applications" element={<ProtectedRoute allowedRoles={['land_officer']}><AllApplicationsPage /></ProtectedRoute>} />
-            <Route path="/officer/applications/:id" element={<ProtectedRoute allowedRoles={['land_officer']}><ReviewApplicationPage /></ProtectedRoute>} />
-            <Route path="/officer/clarifications" element={<ProtectedRoute allowedRoles={['land_officer']}><ClarificationsPage /></ProtectedRoute>} />
+            <Route path="/officer" element={<ProtectedRoute allowedRoles={['land_officer', 'admin']}><OfficerDashboard /></ProtectedRoute>} />
+            <Route path="/officer/applications" element={<ProtectedRoute allowedRoles={['land_officer', 'admin']}><AllApplicationsPage /></ProtectedRoute>} />
+            <Route path="/officer/applications/:id" element={<ProtectedRoute allowedRoles={['land_officer', 'admin']}><ReviewApplicationPage /></ProtectedRoute>} />
+            <Route path="/officer/clarifications" element={<ProtectedRoute allowedRoles={['land_officer', 'admin']}><ClarificationsPage /></ProtectedRoute>} />
 
             {/* Survey Officer */}
-            <Route path="/survey" element={<ProtectedRoute allowedRoles={['survey_officer']}><SurveyDashboard /></ProtectedRoute>} />
-            <Route path="/survey/verifications" element={<ProtectedRoute allowedRoles={['survey_officer']}><AssignedVerificationsPage /></ProtectedRoute>} />
-            <Route path="/survey/verifications/:id" element={<ProtectedRoute allowedRoles={['survey_officer']}><VerificationDetailsPage /></ProtectedRoute>} />
+            <Route path="/survey" element={<ProtectedRoute allowedRoles={['survey_officer', 'admin']}><SurveyDashboard /></ProtectedRoute>} />
+            <Route path="/survey/verifications" element={<ProtectedRoute allowedRoles={['survey_officer', 'admin']}><AssignedVerificationsPage /></ProtectedRoute>} />
+            <Route path="/survey/verifications/:id" element={<ProtectedRoute allowedRoles={['survey_officer', 'admin']}><VerificationDetailsPage /></ProtectedRoute>} />
 
             {/* Admin */}
             <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />

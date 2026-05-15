@@ -11,21 +11,25 @@ export default function SurveyDashboard() {
   const { user } = useAuth();
   if (!user) return null;
 
-  const assigned = getApplications().filter(a => a.assignedSurveyOfficerId === user.id);
+  const assigned = getApplications().filter(app =>
+    user.role === 'admin'
+      ? app.assignedSurveyOfficerId || app.status === 'Under Review' || app.status === 'Verified'
+      : app.assignedSurveyOfficerId === user.id,
+  );
   const completed = assigned.filter(a => a.verificationNotes.some(v => v.isVerified));
   const pending = assigned.filter(a => !a.verificationNotes.some(v => v.isVerified));
 
   return (
     <DashboardLayout>
       <div className="page-header">
-        <h1 className="page-title">Survey Officer Dashboard</h1>
-        <p className="page-description">Verify land and plot details for assigned cases</p>
+        <h1 className="page-title">{user.role === 'admin' ? 'Survey Tasks' : 'Survey Officer Dashboard'}</h1>
+        <p className="page-description">{user.role === 'admin' ? 'Verify land and plot details across survey cases' : 'Verify land and plot details for assigned cases'}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3 mb-8">
-        <StatCard title="Assigned Cases" value={assigned.length} icon={MapPin} />
-        <StatCard title="Completed" value={completed.length} icon={CheckCircle2} />
-        <StatCard title="Pending" value={pending.length} icon={Clock} />
+        <StatCard title="Assigned Cases" value={assigned.length} icon={MapPin} to="/survey/verifications" />
+        <StatCard title="Completed" value={completed.length} icon={CheckCircle2} to="/survey/verifications" />
+        <StatCard title="Pending" value={pending.length} icon={Clock} to="/survey/verifications" />
       </div>
 
       <Card>

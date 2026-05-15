@@ -6,16 +6,32 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { UserRole } from '@/types';
 
+type RoleFilter = 'all' | UserRole;
+
 export default function UserManagementPage() {
   const [query, setQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [roleDrafts, setRoleDrafts] = useState<Record<string, UserRole>>({});
   const [, setRefresh] = useState(0);
   const { toast } = useToast();
-  const users = getUsers().filter(u => u.name.toLowerCase().includes(query.toLowerCase()) || u.email.toLowerCase().includes(query.toLowerCase()));
+  const matchingUsers = getUsers().filter(u => u.name.toLowerCase().includes(query.toLowerCase()) || u.email.toLowerCase().includes(query.toLowerCase()));
+  const users = roleFilter === 'all' ? matchingUsers : matchingUsers.filter(user => user.role === roleFilter);
+
+  const roleTabs: Array<{ value: RoleFilter; label: string }> = [
+    { value: 'all', label: 'All' },
+    { value: 'citizen', label: 'Citizens' },
+    { value: 'land_officer', label: 'Land Officers' },
+    { value: 'survey_officer', label: 'Survey Officers' },
+    { value: 'admin', label: 'Admins' },
+  ];
+
+  const roleCount = (role: RoleFilter) =>
+    role === 'all' ? matchingUsers.length : matchingUsers.filter(user => user.role === role).length;
 
   const handleDelete = async (id: string, name: string) => {
     try {
@@ -53,16 +69,35 @@ export default function UserManagementPage() {
     <DashboardLayout>
       <div className="page-header">
         <h1 className="page-title">User Management</h1>
-        <p className="page-description">{users.length} users</p>
+        <p className="page-description">{users.length} user(s) shown</p>
       </div>
 
-      <div className="relative max-w-md mb-6">
+      <div className="relative max-w-md mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input className="pl-10" placeholder="Search users..." value={query} onChange={e => setQuery(e.target.value)} />
       </div>
 
+      <Tabs value={roleFilter} onValueChange={value => setRoleFilter(value as RoleFilter)} className="mb-6">
+        <TabsList className="h-auto flex-wrap justify-start">
+          {roleTabs.map(tab => (
+            <TabsTrigger key={tab.value} value={tab.value}>
+              {tab.label}
+              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
+                {roleCount(tab.value)}
+              </Badge>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
       <div className="space-y-2">
-        {users.map(u => (
+        {users.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              No users found for this filter.
+            </CardContent>
+          </Card>
+        ) : users.map(u => (
           <Card key={u.id}>
             <CardContent className="flex items-center justify-between py-3">
               <div className="flex items-center gap-4">

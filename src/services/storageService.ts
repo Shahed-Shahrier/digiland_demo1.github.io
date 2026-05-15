@@ -187,10 +187,12 @@ function mapUser(row: DbUser, role?: string | null): User {
   };
 }
 
-function mapLandRecord(row: DbLandParcel, ownerName = 'Unknown owner'): LandRecord {
+function mapLandRecord(row: DbLandParcel, ownerName = 'Unknown owner', owners: DbUserSummary[] = []): LandRecord {
   return {
     id: String(row.land_id),
     ownerName,
+    ownerIds: owners.map(owner => String(owner.user_id)),
+    ownerNids: owners.map(owner => owner.nid_number).filter((nid): nid is string => Boolean(nid)),
     plotNumber: row.plot_number,
     holdingNumber: row.holding_number || row.khatian_number || '',
     district: row.district || '',
@@ -382,6 +384,19 @@ async function syncLandOwnership(
       }
       throw error;
     }
+  } else {
+    unwrap(
+      await supabase
+        .from('land_owners')
+        .update({
+          ownership_percentage: 100,
+          ownership_source: source,
+          end_date: null,
+          is_current_owner: true,
+        })
+        .eq('id', existingOwnerRows[0].id),
+      `Restore land owner for ${ownerName}`,
+    );
   }
 
   const existingUserLandRows = unwrap<Array<{ user_land_record_id: number }>>(
@@ -417,6 +432,68 @@ async function syncLandOwnership(
       throw error;
     }
   }
+}
+
+async function transferApprovedLandOwnership(app: Application, dbApplication: DbApplication) {
+  const landId = numericId(dbApplication.land_id);
+  const proposedNewOwnerId = numericId(app.proposedNewOwnerIds?.[0]);
+  if (!landId || !proposedNewOwnerId) return app;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date().toISOString();
+  const proposedOwnerProfile = cache.users.find(user => user.id === String(proposedNewOwnerId));
+  const ownerName = proposedOwnerProfile?.name || app.proposedNewOwner || 'New owner';
+
+  unwrap(
+    await supabase
+      .from('land_owners')
+      .update({
+        is_current_owner: false,
+        end_date: today,
+      })
+      .eq('land_id', landId)
+      .eq('is_current_owner', true)
+      .neq('user_id', proposedNewOwnerId),
+    'End previous land ownership',
+  );
+
+  await syncLandOwnership(
+    landId,
+    proposedNewOwnerId,
+    ownerName,
+    `Ownership transferred by approved application ${app.id}.`,
+    numericId(app.assignedOfficerId),
+  );
+
+  unwrap(
+    await supabase
+      .from('land_parcels')
+      .update({
+        ownership_status: 'single_owner',
+        current_status: 'active',
+        updated_at: now,
+      })
+      .eq('land_id', landId),
+    'Mark transferred land parcel active',
+  );
+
+  cache.landRecords = cache.landRecords.map(record => {
+    if (record.id !== String(landId)) return record;
+    return {
+      ...record,
+      ownerName,
+      ownerIds: [String(proposedNewOwnerId)],
+      ownerNids: proposedOwnerProfile?.nid ? [proposedOwnerProfile.nid] : [],
+      ownershipStatus: 'Active',
+    };
+  });
+
+  return {
+    ...app,
+    currentOwner: ownerName,
+    currentOwnerIds: [String(proposedNewOwnerId)],
+    currentOwnerNids: proposedOwnerProfile?.nid ? [proposedOwnerProfile.nid] : [],
+  };
 }
 
 function mapDocument(row: DbDocument) {
@@ -588,6 +665,11 @@ function mapApplication(
     newOwners.filter(owner => String(owner.application_id) === String(row.application_id)),
     usersById,
   );
+  const applicationNewOwners = newOwners.filter(owner => String(owner.application_id) === String(row.application_id));
+  const proposedNewOwnerIds = applicationNewOwners.map(owner => String(owner.user_id));
+  const proposedNewOwnerNids = applicationNewOwners
+    .map(owner => embeddedUser(owner.users)?.nid_number || usersById.get(String(owner.user_id))?.nid)
+    .filter((nid): nid is string => Boolean(nid));
   const statusHistory = historyRows
     .filter(h => String(h.application_id) === String(row.application_id))
     .map(h => ({
@@ -604,6 +686,10 @@ function mapApplication(
     applicantPhone: applicant?.phone || '',
     applicantEmail: applicant?.email || '',
     applicantAddress: '',
+    currentOwnerIds: land?.ownerIds || [],
+    currentOwnerNids: land?.ownerNids || [],
+    proposedNewOwnerIds,
+    proposedNewOwnerNids,
     plotNumber: land?.plotNumber || '',
     holdingNumber: land?.holdingNumber || '',
     district: land?.district || '',
@@ -679,7 +765,10 @@ async function loadLandRecords() {
   cache.landRecords = parcels.map(parcel => {
     const currentOwners = (parcel.land_owners || []).filter(owner => owner.is_current_owner !== false);
     const ownerName = formatRelatedUserNames(currentOwners, usersById) || 'Unknown owner';
-    return mapLandRecord(parcel, ownerName);
+    const ownerSummaries = currentOwners
+      .map(owner => embeddedUser(owner.users))
+      .filter((owner): owner is DbUserSummary => Boolean(owner));
+    return mapLandRecord(parcel, ownerName, ownerSummaries);
   });
   return cache.landRecords;
 }
@@ -791,6 +880,48 @@ export async function getUserProfileByNid(nid: string) {
     nid: row.nid_number || undefined,
     createdAt: new Date().toISOString(),
   };
+}
+
+type LandOwnerSearchRow = DbLandOwner & {
+  users?: DbUserSummary | DbUserSummary[] | null;
+  land_parcels?: DbLandParcel | DbLandParcel[] | null;
+};
+
+export async function getLandRecordsByCurrentOwnerNid(nid: string) {
+  const normalizedNid = nid.trim();
+  if (!normalizedNid) return [];
+
+  const result = await supabase
+    .from('land_owners')
+    .select(`
+      *,
+      users!inner (
+        user_id,
+        full_name,
+        email,
+        nid_number
+      ),
+      land_parcels!inner (
+        *
+      )
+    `)
+    .eq('users.nid_number', normalizedNid)
+    .eq('is_current_owner', true)
+    .order('created_at', { ascending: false });
+
+  const rows = unwrap<LandOwnerSearchRow[]>(
+    result as { data: LandOwnerSearchRow[] | null; error: { message: string } | null },
+    'Search land records by current owner NID',
+  );
+
+  return rows
+    .map(row => {
+      const parcel = Array.isArray(row.land_parcels) ? row.land_parcels[0] : row.land_parcels;
+      const owner = embeddedUser(row.users);
+      if (!parcel) return null;
+      return mapLandRecord(parcel, owner?.full_name || 'Unknown owner', owner ? [owner] : []);
+    })
+    .filter((record): record is LandRecord => Boolean(record));
 }
 
 export async function getUserProfileByAuthId(authUserId: string, email?: string) {
@@ -1116,6 +1247,21 @@ export const deleteLandRecord = async (id: string) => {
 // Applications
 export const getApplications = () => cache.applications;
 
+export const applicationMatchesUser = (app: Application, user?: Pick<User, 'id' | 'nid'> | null) => {
+  if (!user) return false;
+  return app.applicantId === user.id ||
+    app.currentOwnerIds?.includes(user.id) ||
+    app.proposedNewOwnerIds?.includes(user.id) ||
+    Boolean(user.nid && (
+      app.applicantNid === user.nid ||
+      app.currentOwnerNids?.includes(user.nid) ||
+      app.proposedNewOwnerNids?.includes(user.nid)
+    ));
+};
+
+export const getApplicationsForUser = (user?: Pick<User, 'id' | 'nid'> | null) =>
+  getApplications().filter(app => applicationMatchesUser(app, user));
+
 export const getApplicationById = (id: string) => getApplications().find(a => a.id === id);
 
 export const addApplication = async (
@@ -1223,10 +1369,15 @@ export const addApplication = async (
   }
 
   const proposedOwnerProfile = proposedNewOwnerId ? cache.users.find(user => user.id === String(proposedNewOwnerId)) : null;
+  const currentOwnerProfile = currentOwnerId ? cache.users.find(user => user.id === String(currentOwnerId)) : null;
   const hydratedApp = {
     ...app,
     currentOwner: app.currentOwner,
     proposedNewOwner: proposedOwnerProfile?.name || app.proposedNewOwner,
+    currentOwnerIds: currentOwnerId ? [String(currentOwnerId)] : app.currentOwnerIds || [],
+    currentOwnerNids: currentOwnerProfile?.nid ? [currentOwnerProfile.nid] : app.currentOwnerNids || [],
+    proposedNewOwnerIds: proposedNewOwnerId ? [String(proposedNewOwnerId)] : app.proposedNewOwnerIds || [],
+    proposedNewOwnerNids: proposedOwnerProfile?.nid ? [proposedOwnerProfile.nid] : app.proposedNewOwnerNids || [],
     documents: uploadedDocuments,
   };
   cache.applications = [hydratedApp, ...cache.applications.filter(existing => existing.id !== app.id)];
@@ -1291,7 +1442,14 @@ export const changeApplicationStatus = async (id: string, status: ApplicationSta
   );
 
   const history = [...app.statusHistory, { status, timestamp: new Date().toISOString(), actor }];
-  return updateApplication(app.id, { status, statusHistory: history, updatedAt: new Date().toISOString() });
+  let updated = await updateApplication(app.id, { status, statusHistory: history, updatedAt: new Date().toISOString() });
+
+  if (status === 'Approved') {
+    updated = await transferApprovedLandOwnership(updated, dbApplication);
+    cache.applications = cache.applications.map(item => item.id === updated.id ? updated : item);
+  }
+
+  return updated;
 };
 
 export const addComment = async (applicationId: string, comment: ReviewComment) => {

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { User, UserRole } from '@/types';
+import { PageLoadingScreen } from '@/components/PageLoadingScreen';
 import { addAuditLog, createUserProfile, generateId, getUserProfileByAuthId, initializeAppData, refreshAppData, updateUser } from '@/services/storageService';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -228,11 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center text-sm text-muted-foreground">
-        Loading Digi-Land...
-      </div>
-    );
+    return <PageLoadingScreen message="Loading Digi-Land..." />;
   }
 
   if (bootError) {

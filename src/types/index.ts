@@ -25,6 +25,8 @@ export interface User {
 export interface LandRecord {
   id: string;
   ownerName: string;
+  ownerIds?: string[];
+  ownerNids?: string[];
   plotNumber: string;
   holdingNumber: string;
   district: string;
@@ -87,6 +89,10 @@ export interface Application {
   applicantPhone: string;
   applicantEmail: string;
   applicantAddress: string;
+  currentOwnerIds?: string[];
+  currentOwnerNids?: string[];
+  proposedNewOwnerIds?: string[];
+  proposedNewOwnerNids?: string[];
   plotNumber: string;
   holdingNumber: string;
   district: string;

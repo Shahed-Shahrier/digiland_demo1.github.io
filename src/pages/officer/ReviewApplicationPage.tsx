@@ -36,19 +36,20 @@ export default function ReviewApplicationPage() {
   const [, setRefresh] = useState(0);
 
   const app = getApplicationById(id || '');
-  if (!app || !user) return <DashboardLayout><p className="text-muted-foreground">Application not found.</p></DashboardLayout>;
-
-  const surveyOfficers = getSurveyOfficers();
-  const openClarification = [...app.clarifications].reverse().find(clarification => clarification.status === 'open');
-  const hasPassedVerification = app.verificationNotes.some(note => note.isVerified);
 
   useEffect(() => {
     void refreshAppData().then(() => setRefresh(refresh => refresh + 1));
   }, [id]);
 
   useEffect(() => {
-    setSelectedSurveyOfficerId(app.assignedSurveyOfficerId || '');
-  }, [app.assignedSurveyOfficerId]);
+    setSelectedSurveyOfficerId(app?.assignedSurveyOfficerId || '');
+  }, [app?.assignedSurveyOfficerId]);
+
+  if (!app || !user) return <DashboardLayout><p className="text-muted-foreground">Application not found.</p></DashboardLayout>;
+
+  const surveyOfficers = getSurveyOfficers();
+  const openClarification = [...app.clarifications].reverse().find(clarification => clarification.status === 'open');
+  const hasPassedVerification = app.verificationNotes.some(note => note.isVerified);
 
   const doAction = async (status: ApplicationStatus, label: string) => {
     const now = new Date().toISOString();

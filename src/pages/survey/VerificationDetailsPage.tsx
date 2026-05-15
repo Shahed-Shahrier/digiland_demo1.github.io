@@ -19,13 +19,14 @@ export default function VerificationDetailsPage() {
   const [, setRefresh] = useState(0);
 
   const app = getApplicationById(id || '');
-  if (!app || !user) return <DashboardLayout><p className="text-muted-foreground">Case not found.</p></DashboardLayout>;
-
-  const alreadyVerified = app.verificationNotes.some(v => v.isVerified);
 
   useEffect(() => {
     void refreshAppData().then(() => setRefresh(refresh => refresh + 1));
   }, [id]);
+
+  if (!app || !user) return <DashboardLayout><p className="text-muted-foreground">Case not found.</p></DashboardLayout>;
+
+  const alreadyVerified = app.verificationNotes.some(v => v.isVerified);
 
   const handleVerify = async () => {
     const now = new Date().toISOString();
