@@ -6,8 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageLoadingScreen } from '@/components/PageLoadingScreen';
-import { getFeaturePath, isFeatureKey } from '@/lib/featureRoutes';
-import { Loader2, MapPin } from 'lucide-react';
+import { ProjectLogo } from '@/components/ProjectLogo';
+import { getDashboardPath, getFeaturePath, isFeatureKey } from '@/lib/featureRoutes';
+import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function LoginPage() {
@@ -19,16 +20,14 @@ export default function LoginPage() {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
 
-  const paths = { citizen: '/citizen', land_officer: '/officer', survey_officer: '/survey', admin: '/admin' };
-
-  const destinationAfterLogin = (role: keyof typeof paths) => {
+  const destinationAfterLogin = (role: NonNullable<Awaited<ReturnType<typeof login>>['user']>['role']) => {
     const feature = searchParams.get('feature');
     if (isFeatureKey(feature)) return getFeaturePath(feature, role);
 
     const next = searchParams.get('next');
     if (next?.startsWith('/') && !next.startsWith('//') && !next.startsWith('/login')) return next;
 
-    return paths[role];
+    return getDashboardPath(role);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -54,13 +53,11 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
+    <div className="app-surface flex min-h-screen items-center justify-center p-4">
       {isSigningIn && <PageLoadingScreen message="Signing in..." overlay />}
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md animate-rise-in">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-            <MapPin className="h-5 w-5 text-primary-foreground" />
-          </div>
+          <ProjectLogo className="animate-soft-pulse mx-auto mb-2 h-10 w-10 shadow-primary/25" />
           <CardTitle className="text-2xl">Sign in to Digi-Land</CardTitle>
           <CardDescription>Enter your credentials to continue</CardDescription>
         </CardHeader>

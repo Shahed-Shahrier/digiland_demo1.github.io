@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { MapPin } from 'lucide-react';
+import { ProjectLogo } from '@/components/ProjectLogo';
 import { useToast } from '@/hooks/use-toast';
 
 export default function RegisterPage() {
@@ -51,12 +51,10 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
-      <Card className="w-full max-w-md">
+    <div className="app-surface flex min-h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-md animate-rise-in">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-            <MapPin className="h-5 w-5 text-primary-foreground" />
-          </div>
+          <ProjectLogo className="animate-soft-pulse mx-auto mb-2 h-10 w-10 shadow-primary/25" />
           <CardTitle className="text-2xl">Create Account</CardTitle>
           <CardDescription>Register for Digi-Land</CardDescription>
         </CardHeader>

@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { FeatureKey, getFeaturePath } from '@/lib/featureRoutes';
-import { MapPin, FileText, Search, Shield, ArrowRight, CheckCircle2, Globe } from 'lucide-react';
+import { ProjectLogo } from '@/components/ProjectLogo';
+import { FeatureKey, getDashboardPath, getFeaturePath } from '@/lib/featureRoutes';
+import { FileText, Search, Shield, ArrowRight, CheckCircle2, Globe } from 'lucide-react';
 
 export default function LandingPage() {
   const { user, isAuthenticated } = useAuth();
@@ -18,28 +19,35 @@ export default function LandingPage() {
     if (isAuthenticated && user) return getFeaturePath(feature, user.role);
     return `/login?feature=${feature}`;
   };
+  const dashboardHref = user ? getDashboardPath(user.role) : '/login';
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="app-surface min-h-screen">
       {/* Hero */}
-      <header className="border-b bg-card">
+      <header className="border-b border-white/10 bg-primary shadow-lg shadow-primary/20 backdrop-blur-xl">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <MapPin className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-bold">Digi-Land</span>
+            <ProjectLogo className="animate-soft-pulse h-8 w-8 shadow-accent/25" />
+            <span className="text-xl font-bold text-white">Digi-Land</span>
           </div>
           <div className="flex gap-2">
-            <Button variant="ghost" asChild><Link to="/login">Login</Link></Button>
-            <Button asChild><Link to="/register">Register</Link></Button>
+            {isAuthenticated && user ? (
+              <Button className="bg-white text-primary shadow-white/20 hover:bg-white/90" asChild>
+                <Link to={dashboardHref}>Dashboard</Link>
+              </Button>
+            ) : (
+              <>
+                <Button variant="ghost" className="text-white hover:bg-white/10 hover:text-white" asChild><Link to="/login">Login</Link></Button>
+                <Button className="bg-white text-primary shadow-white/20 hover:bg-white/90" asChild><Link to="/register">Register</Link></Button>
+              </>
+            )}
           </div>
         </div>
       </header>
 
-      <section className="py-24 px-6">
-        <div className="container max-w-4xl text-center">
-          <div className="inline-flex items-center rounded-full border bg-muted px-4 py-1.5 text-sm text-muted-foreground mb-6">
+      <section className="px-6 py-24">
+        <div className="container max-w-4xl animate-rise-in text-center">
+          <div className="mb-6 inline-flex items-center rounded-full border bg-card/80 px-4 py-1.5 text-sm text-muted-foreground shadow-sm backdrop-blur">
             <Globe className="h-3.5 w-3.5 mr-2" />
             Academic Prototype — Digital Land Records for Bangladesh
           </div>
@@ -51,23 +59,31 @@ export default function LandingPage() {
             A transparent, trackable platform for land ownership transfers. Search records, submit applications, and track progress — all online.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
-            <Button size="lg" asChild>
-              <Link to="/register">Get Started <ArrowRight className="ml-2 h-4 w-4" /></Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild>
-              <Link to="/login">Login</Link>
-            </Button>
+            {isAuthenticated && user ? (
+              <Button size="lg" asChild>
+                <Link to={dashboardHref}>Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" /></Link>
+              </Button>
+            ) : (
+              <>
+                <Button size="lg" asChild>
+                  <Link to="/register">Get Started <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                </Button>
+                <Button size="lg" variant="outline" asChild>
+                  <Link to="/login">Login</Link>
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </section>
 
       {/* Features */}
-      <section className="py-20 bg-muted/50 border-t">
+      <section className="border-t bg-background/55 py-20 backdrop-blur">
         <div className="container">
           <h2 className="text-2xl font-bold text-center mb-12">Platform Features</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
+          <div className="stagger-children mx-auto grid max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {features.map(f => (
-              <Link key={f.title} to={featureHref(f.key)} className="rounded-xl border bg-card p-6 text-center transition-colors hover:border-primary hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+              <Link key={f.title} to={featureHref(f.key)} className="glass-panel interactive-card rounded-lg p-6 text-center focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
                 <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
                   <f.icon className="h-6 w-6 text-primary" />
                 </div>

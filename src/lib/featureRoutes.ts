@@ -9,6 +9,17 @@ export function isFeatureKey(value: string | null): value is FeatureKey {
     value === 'status-tracking';
 }
 
+export function getDashboardPath(role: UserRole) {
+  const paths: Record<UserRole, string> = {
+    citizen: '/citizen',
+    land_officer: '/officer',
+    survey_officer: '/survey',
+    admin: '/admin',
+  };
+
+  return paths[role];
+}
+
 export function getFeaturePath(feature: FeatureKey, role: UserRole) {
   const paths: Record<FeatureKey, Record<UserRole, string>> = {
     'land-search': {
