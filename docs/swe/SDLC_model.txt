@@ -1,0 +1,28 @@
+The Incremental Model was selected as the most suitable SDLC model for the Digi-Land project. This is because the system contains several distinct but related modules, such as registration and login, land information search, ownership transfer application, document upload, officer review, survey verification, status notification, tracking, and audit history. These features can be developed and delivered in separate increments, making the project easier to manage and test. The model is especially appropriate because Digi-Land is an academic prototype with limited time, limited resources, and possible refinement during development. It also supports early testing and gradual improvement, which is important for handling risks such as unauthorized access, fake documents, and data errors. Therefore, the Incremental Model provides the best balance of structure, flexibility, and practicality for this project.
+
+Model Table: (out of 35)
+
+| Criteria                         | Priority | Waterfall | Iterative | Spiral | Agile | Prototype | V-Shape | Incremental |
+| -------------------------------- | -------- | --------- | --------- | ------ | ----- | --------- | ------- | ----------- |
+| Well-defined Requirements        | 5        | Yes       | Yes       | Yes    | No    | No        | Yes     | Yes         |
+| Technological Knowledge          | 4        | Yes       | Yes       | Yes    | Yes   | No        | Yes     | Yes         |
+| Efficiency                       | 4        | Yes       | Yes       | No     | Yes   | No        | Yes     | Yes         |
+| Risk Analysis                    | 5        | No        | No        | Yes    | No    | No        | Yes     | Yes         |
+| User Testing Ability             | 5        | No        | Yes       | Yes    | Yes   | Yes       | Yes     | Yes         |
+| Flexibility (Requirement Change) | 4        | No        | Yes       | Yes    | Yes   | Yes       | No      | Yes         |
+| Security & Reliability           | 5        | Yes       | Yes       | Yes    | No    | No        | Yes     | Yes         |
+| Time Consumption                 | 3        | No        | Yes       | No     | Yes   | Yes       | No      | Yes         |
+
+
+
+| Model           | Score            |
+| --------------- | ---------------- |
+| Waterfall       | 18               |
+| Iterative       | 30               |
+| Spiral          | 28               |
+| Agile           | 20               |
+| Prototype       | 12               |
+| V-Shape         | 28               |
+| Incremental     | 35 (Highest)     |
+
+
