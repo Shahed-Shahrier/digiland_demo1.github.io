@@ -28,12 +28,12 @@ export default function NotificationsPage() {
 
   return (
     <DashboardLayout>
-      <div className="page-header flex items-center justify-between">
+      <div className="page-header flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Notifications</h1>
           <p className="page-description">{notifs.filter(n => !n.read).length} unread</p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleMarkAll}>Mark All Read</Button>
+        <Button className="w-full sm:w-auto" variant="outline" size="sm" onClick={handleMarkAll}>Mark All Read</Button>
       </div>
 
       <div className="space-y-2">
@@ -43,14 +43,14 @@ export default function NotificationsPage() {
           const Icon = typeIcons[n.type];
           const content = (
             <Card className={cn(n.applicationId && 'hover:shadow-md transition-shadow', !n.read && 'border-primary/30 bg-primary/5')}>
-              <CardContent className="flex items-start gap-3 py-4">
+              <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start">
                 <Icon className={cn('h-5 w-5 shrink-0 mt-0.5', n.type === 'success' && 'text-success', n.type === 'warning' && 'text-warning', n.type === 'error' && 'text-destructive', n.type === 'info' && 'text-info')} />
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{n.title}</p>
                   <p className="text-sm text-muted-foreground">{n.message}</p>
                   <p className="text-xs text-muted-foreground mt-1">{new Date(n.createdAt).toLocaleString()}</p>
                 </div>
-                {!n.read && <Button variant="ghost" size="sm" onClick={event => {
+                {!n.read && <Button className="self-start sm:self-center" variant="ghost" size="sm" onClick={event => {
                   event.preventDefault();
                   void handleMark(n.id);
                 }}>Mark Read</Button>}

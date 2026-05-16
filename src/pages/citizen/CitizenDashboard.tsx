@@ -43,7 +43,7 @@ export default function CitizenDashboard() {
             ) : (
               <div className="space-y-3">
                 {apps.slice(0, 5).map(app => (
-                  <Link key={app.id} to={`/citizen/applications/${app.id}`} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors">
+                  <Link key={app.id} to={`/citizen/applications/${app.id}`} className="responsive-list-row rounded-lg border p-3 transition-colors hover:bg-muted/50">
                     <div>
                       <p className="text-sm font-medium">{app.id}</p>
                       <p className="text-xs text-muted-foreground">Plot: {app.plotNumber} — {app.district}</p>

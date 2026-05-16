@@ -77,8 +77,8 @@ export default function MyPropertiesPage() {
           {properties.map(property => (
             <Card key={property.id} className="hover:shadow-md transition-shadow">
               <CardContent className="space-y-4 py-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <p className="font-semibold">Plot {property.plotNumber}</p>
                     <p className="text-sm text-muted-foreground">Holding {property.holdingNumber || 'N/A'}</p>
                   </div>
@@ -102,8 +102,8 @@ export default function MyPropertiesPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <MapPin className="h-4 w-4" />
+                <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                  <MapPin className="h-4 w-4 shrink-0" />
                   Current owner: {property.ownerName}
                 </div>
               </CardContent>

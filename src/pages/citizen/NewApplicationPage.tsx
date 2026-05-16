@@ -534,8 +534,8 @@ export default function NewApplicationPage() {
                               onClick={() => selectLandRecord(record)}
                               className={`w-full rounded-lg border p-3 text-left transition-colors hover:border-primary hover:bg-primary/5 ${selected ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}
                             >
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="min-w-0">
                                   <p className="text-sm font-semibold">Plot {record.plotNumber} • Holding {record.holdingNumber || 'N/A'}</p>
                                   <p className="mt-1 text-xs text-muted-foreground">{record.mouza}, {record.upazila}, {record.district}</p>
                                   <p className="mt-1 text-xs text-muted-foreground">Land size: {record.landSize || 'N/A'} • Status: {record.ownershipStatus}</p>
@@ -656,22 +656,22 @@ export default function NewApplicationPage() {
                 const inputId = `document-upload-${docType.toLowerCase().replace(/\s+/g, '-')}`;
                 const isRequired = REQUIRED_APPLICATION_DOCUMENT_TYPES.includes(docType);
                 return (
-                  <div key={docType} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="space-y-1">
+                  <div key={docType} className="responsive-list-row rounded-lg border p-3">
+                    <div className="min-w-0 space-y-1">
                       <p className="text-sm font-medium">
                         {docType}
                         {isRequired && <span className="ml-2 text-xs text-destructive">Required</span>}
                       </p>
                       {uploaded ? (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <FileText className="h-4 w-4" />
-                          <span>{uploaded.name} — {(uploaded.size / 1024).toFixed(0)} KB</span>
+                        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                          <FileText className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{uploaded.name} — {(uploaded.size / 1024).toFixed(0)} KB</span>
                         </div>
                       ) : (
                         <p className="text-xs text-muted-foreground">PDF only</p>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <input
                         id={inputId}
                         type="file"
@@ -700,12 +700,12 @@ export default function NewApplicationPage() {
             </>
           )}
 
-          <div className="flex justify-between pt-4">
-            <Button variant="outline" onClick={() => setStep(s => s - 1)} disabled={step === 1 || isSubmitting}>Previous</Button>
+          <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-between">
+            <Button className="w-full sm:w-auto" variant="outline" onClick={() => setStep(s => s - 1)} disabled={step === 1 || isSubmitting}>Previous</Button>
             {step < 4 ? (
-              <Button onClick={handleNext} disabled={isSubmitting}>Next</Button>
+              <Button className="w-full sm:w-auto" onClick={handleNext} disabled={isSubmitting}>Next</Button>
             ) : (
-              <Button onClick={handleSubmit} disabled={isSubmitting}>
+              <Button className="w-full sm:w-auto" onClick={handleSubmit} disabled={isSubmitting}>
                 {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading PDFs...</> : 'Submit Application'}
               </Button>
             )}

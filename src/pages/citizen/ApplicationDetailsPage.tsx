@@ -92,7 +92,7 @@ export default function ApplicationDetailsPage() {
 
   return (
     <DashboardLayout>
-      <div className="page-header flex items-center gap-3">
+      <div className="page-header flex flex-wrap items-center gap-3">
         <div>
           <h1 className="page-title">{app.id}</h1>
           <p className="page-description">Submitted on {new Date(app.createdAt).toLocaleDateString()}</p>
@@ -134,13 +134,14 @@ export default function ApplicationDetailsPage() {
               {app.documents.length === 0 ? <p className="text-sm text-muted-foreground">No documents uploaded.</p> : (
                 <div className="grid sm:grid-cols-2 gap-3">
                   {app.documents.map(doc => (
-                    <div key={doc.id} className="flex items-center gap-3 p-3 rounded-lg border">
+                    <div key={doc.id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center">
                       <FileText className="h-8 w-8 text-primary shrink-0" />
-                      <div className="flex-1">
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">{doc.documentType}</p>
-                        <p className="text-xs text-muted-foreground">{doc.name} — {(doc.size / 1024).toFixed(0)} KB</p>
+                        <p className="truncate text-xs text-muted-foreground">{doc.name} — {(doc.size / 1024).toFixed(0)} KB</p>
                       </div>
                       <Button
+                        className="w-full sm:w-auto"
                         type="button"
                         size="sm"
                         variant="outline"

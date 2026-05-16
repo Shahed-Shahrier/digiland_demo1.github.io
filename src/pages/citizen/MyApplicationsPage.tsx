@@ -22,7 +22,7 @@ export default function MyApplicationsPage() {
         ) : apps.map(app => (
           <Link key={app.id} to={`/citizen/applications/${app.id}`}>
             <Card className="hover:shadow-md transition-shadow">
-              <CardContent className="flex items-center justify-between py-4">
+              <CardContent className="responsive-list-row py-4">
                 <div>
                   <p className="font-semibold">{app.id}</p>
                   <p className="text-sm text-muted-foreground">Plot: {app.plotNumber} • {app.district}, {app.upazila}</p>

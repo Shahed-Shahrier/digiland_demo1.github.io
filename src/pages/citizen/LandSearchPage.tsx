@@ -23,7 +23,7 @@ export default function LandSearchPage() {
         <p className="page-description">Search by plot number, holding number, owner name, or district</p>
       </div>
 
-      <div className="relative max-w-xl mb-6">
+      <div className="relative mb-6 w-full max-w-xl">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input className="pl-10" placeholder="Search land records..." value={query} onChange={e => setQuery(e.target.value)} />
       </div>
@@ -34,15 +34,15 @@ export default function LandSearchPage() {
         ) : filtered.map(r => (
           <Card key={r.id} className="hover:shadow-md transition-shadow">
             <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold">{r.id}</span>
                   <Badge variant={r.ownershipStatus === 'Active' ? 'default' : 'secondary'}>{r.ownershipStatus}</Badge>
                 </div>
                 <p className="text-sm"><span className="text-muted-foreground">Owner:</span> {r.ownerName}</p>
                 <p className="text-sm"><span className="text-muted-foreground">Plot:</span> {r.plotNumber} • <span className="text-muted-foreground">Holding:</span> {r.holdingNumber}</p>
               </div>
-              <div className="text-right text-sm">
+              <div className="text-sm sm:text-right">
                 <p>{r.mouza}, {r.upazila}</p>
                 <p className="text-muted-foreground">{r.district}</p>
                 <p className="font-medium">{r.landSize}</p>

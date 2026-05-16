@@ -163,7 +163,7 @@ export default function ReviewApplicationPage() {
 
   return (
     <DashboardLayout>
-      <div className="page-header flex items-center gap-3">
+      <div className="page-header flex flex-wrap items-center gap-3">
         <div><h1 className="page-title">{app.id}</h1><p className="page-description">{app.applicantName}</p></div>
         <StatusBadge status={app.status} />
       </div>
@@ -199,10 +199,11 @@ export default function ReviewApplicationPage() {
             <CardContent>
               <div className="grid sm:grid-cols-2 gap-3">
                 {app.documents.map(d => (
-                  <div key={d.id} className="flex items-center gap-3 p-3 rounded-lg border">
+                  <div key={d.id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center">
                     <FileText className="h-8 w-8 text-primary shrink-0" />
-                    <div className="flex-1"><p className="text-sm font-medium">{d.documentType}</p><p className="text-xs text-muted-foreground">{d.name} — {(d.size / 1024).toFixed(0)} KB</p></div>
+                    <div className="min-w-0 flex-1"><p className="text-sm font-medium">{d.documentType}</p><p className="truncate text-xs text-muted-foreground">{d.name} — {(d.size / 1024).toFixed(0)} KB</p></div>
                     <Button
+                      className="w-full sm:w-auto"
                       type="button"
                       size="sm"
                       variant="outline"
