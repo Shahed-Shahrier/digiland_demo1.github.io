@@ -61,7 +61,9 @@ src/
   types/                          App domain types
 
 supabase/migrations/              Database/RLS/storage migration drafts
-docs/                             Setup and review notes
+docs/supabase/                    Supabase setup and integration notes
+docs/testing/                     Manual testing checklist
+docs/swe/                         Course documentation artifacts
 public/                           Static icons and public assets
 ```
 
@@ -231,7 +233,7 @@ npm run lint
 
 ## Supabase Setup
 
-Review the setup notes in `docs/supabase-setup.md` and the migration drafts in `supabase/migrations/`.
+Review the setup notes in `docs/supabase/setup.md` and the migration drafts in `supabase/migrations/`.
 
 At minimum, verify:
 

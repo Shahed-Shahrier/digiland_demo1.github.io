@@ -106,4 +106,4 @@ The app is Supabase-backed, not localStorage-backed. `src` no longer uses `local
 4. Verify enum values before writes are used in production.
 5. Configure Supabase Auth redirect URLs.
 6. Test with real user accounts and RLS enabled.
-7. Create and link Supabase Auth users for the seeded demo emails listed in `docs/supabase-setup.md`.
+7. Create and link Supabase Auth users for the seeded demo emails listed in `docs/supabase/setup.md`.
