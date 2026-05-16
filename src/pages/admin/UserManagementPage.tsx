@@ -72,7 +72,7 @@ export default function UserManagementPage() {
         <p className="page-description">{users.length} user(s) shown</p>
       </div>
 
-      <div className="relative max-w-md mb-4">
+      <div className="relative mb-4 w-full max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input className="pl-10" placeholder="Search users..." value={query} onChange={e => setQuery(e.target.value)} />
       </div>
@@ -99,18 +99,18 @@ export default function UserManagementPage() {
           </Card>
         ) : users.map(u => (
           <Card key={u.id}>
-            <CardContent className="flex items-center justify-between py-3">
-              <div className="flex items-center gap-4">
+            <CardContent className="responsive-list-row py-3">
+              <div className="flex min-w-0 items-center gap-4">
                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">{u.name.charAt(0)}</div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-medium">{u.name}</p>
-                  <p className="text-xs text-muted-foreground">{u.email}</p>
+                  <p className="truncate text-xs text-muted-foreground">{u.email}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="responsive-list-actions">
                 <Badge className={roleColors[u.role]}>{u.role.replace('_', ' ')}</Badge>
                 <Select value={roleDrafts[u.id] || u.role} onValueChange={value => setRoleDrafts(prev => ({ ...prev, [u.id]: value as UserRole }))}>
-                  <SelectTrigger className="w-[170px]">
+                  <SelectTrigger className="w-full min-[420px]:w-[170px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

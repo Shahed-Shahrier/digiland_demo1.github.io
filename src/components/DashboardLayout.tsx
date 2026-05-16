@@ -110,27 +110,30 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
     return (
       <div className="app-surface min-h-screen">
         <header className="sticky top-0 z-40 border-b border-white/10 bg-primary shadow-lg shadow-primary/20 backdrop-blur-xl">
-          <div className="flex min-h-16 items-center gap-3 px-4 sm:px-6">
-            <Link to={homePath} className="flex shrink-0 items-center gap-2">
-              <ProjectLogo className="animate-soft-pulse h-8 w-8 shadow-accent/25" />
-              <span className="font-bold text-lg text-white">Digi-Land</span>
-            </Link>
+          <div className="flex flex-col gap-2 px-3 py-2 sm:px-6 lg:min-h-16 lg:flex-row lg:items-center lg:gap-3 lg:py-0">
+            <div className="flex min-h-10 items-center gap-2">
+              <Link to={homePath} className="flex shrink-0 items-center gap-2">
+                <ProjectLogo className="animate-soft-pulse h-8 w-8 shadow-accent/25" />
+                <span className="font-bold text-lg text-white">Digi-Land</span>
+              </Link>
+              <div className="ml-auto flex shrink-0 items-center gap-2">
+                <div className="hidden shrink-0 text-right md:block">
+                  <p className="max-w-36 truncate text-sm font-medium text-white">{user.name}</p>
+                  <p className="text-xs text-white/55">{roleLabel}</p>
+                </div>
+                <Button variant="outline" size="sm" className="bg-white/95 text-primary hover:bg-white hover:text-primary" onClick={() => setNavMode('side')}>
+                  <Menu className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Side Nav</span>
+                </Button>
+                <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 hover:text-white" onClick={handleLogout} aria-label="Logout">
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
 
-            <nav className="flex flex-1 items-center gap-1 overflow-x-auto px-2">
+            <nav className="flex w-full items-center gap-1 overflow-x-auto pb-1 lg:flex-1 lg:px-2 lg:pb-0">
               {navItems.map(item => renderNavItem(item, 'top'))}
             </nav>
-
-            <div className="hidden shrink-0 text-right sm:block">
-              <p className="max-w-36 truncate text-sm font-medium text-white">{user.name}</p>
-              <p className="text-xs text-white/55">{roleLabel}</p>
-            </div>
-            <Button variant="outline" size="sm" className="bg-white/95 text-primary hover:bg-white hover:text-primary" onClick={() => setNavMode('side')}>
-              <Menu className="mr-2 h-4 w-4" />
-              Side Nav
-            </Button>
-            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 hover:text-white" onClick={handleLogout} aria-label="Logout">
-              <LogOut className="h-4 w-4" />
-            </Button>
           </div>
         </header>
         <main className="animate-rise-in p-4 sm:p-6">
@@ -174,8 +177,8 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main */}
-      <div className={cn("flex-1 transition-all duration-300", sidebarOpen ? "ml-64" : "ml-16")}>
-        <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background/80 px-6 shadow-sm backdrop-blur-xl">
+      <div className={cn("flex-1 transition-all duration-300", sidebarOpen ? "ml-16 sm:ml-64" : "ml-16")}>
+        <header className="sticky top-0 z-40 flex h-16 items-center gap-3 border-b bg-background/80 px-3 shadow-sm backdrop-blur-xl sm:gap-4 sm:px-6">
           <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(!sidebarOpen)}>
             <Menu className="h-5 w-5" />
           </Button>
@@ -185,7 +188,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           <div className="flex-1" />
           <span className="text-xs text-muted-foreground hidden sm:block">Prototype — Academic Use Only</span>
         </header>
-        <main className="animate-rise-in p-6">
+        <main className="animate-rise-in p-4 sm:p-6">
           {children}
         </main>
       </div>

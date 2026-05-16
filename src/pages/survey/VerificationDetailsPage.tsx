@@ -69,7 +69,7 @@ export default function VerificationDetailsPage() {
 
   return (
     <DashboardLayout>
-      <div className="page-header flex items-center gap-3">
+      <div className="page-header flex flex-wrap items-center gap-3">
         <div><h1 className="page-title">{app.id}</h1><p className="page-description">Verification Details</p></div>
         <StatusBadge status={app.status} />
       </div>
@@ -92,10 +92,11 @@ export default function VerificationDetailsPage() {
           <CardContent>
             <div className="space-y-2">
               {app.documents.map(d => (
-                <div key={d.id} className="flex items-center gap-3 p-2 rounded border">
-                  <FileText className="h-5 w-5 text-primary" />
-                  <div className="flex-1"><p className="text-sm">{d.documentType}</p><p className="text-xs text-muted-foreground">{d.name}</p></div>
+                <div key={d.id} className="flex flex-col gap-3 rounded border p-2 sm:flex-row sm:items-center">
+                  <FileText className="h-5 w-5 shrink-0 text-primary" />
+                  <div className="min-w-0 flex-1"><p className="text-sm">{d.documentType}</p><p className="truncate text-xs text-muted-foreground">{d.name}</p></div>
                   <Button
+                    className="w-full sm:w-auto"
                     type="button"
                     size="sm"
                     variant="outline"

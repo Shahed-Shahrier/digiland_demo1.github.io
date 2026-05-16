@@ -30,13 +30,13 @@ export default function AllApplicationsPage() {
         <h1 className="page-title">All Applications</h1>
       </div>
 
-      <div className="flex gap-3 mb-6 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <div className="relative w-full sm:min-w-[220px] sm:flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input className="pl-10" placeholder="Search by app ID, name, NID, or plot..." value={query} onChange={e => setQuery(e.target.value)} />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-48"><SelectValue placeholder="Filter by status" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="Filter by status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Statuses</SelectItem>
             {['Pending', 'Under Review', 'Clarification Requested', 'Verified', 'Approved', 'Rejected'].map(s => (
@@ -45,7 +45,7 @@ export default function AllApplicationsPage() {
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-56"><SelectValue placeholder="Filter by type" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-56"><SelectValue placeholder="Filter by type" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Application Types</SelectItem>
             {transferTypes.map(type => (
@@ -59,7 +59,7 @@ export default function AllApplicationsPage() {
         {apps.map(app => (
           <Link key={app.id} to={`/officer/applications/${app.id}`}>
             <Card className="hover:shadow-md transition-shadow">
-              <CardContent className="flex items-center justify-between py-4">
+              <CardContent className="responsive-list-row py-4">
                 <div>
                   <p className="font-semibold">{app.id}</p>
                   <p className="text-sm text-muted-foreground">{app.applicantName} • Plot: {app.plotNumber} • {app.district}</p>

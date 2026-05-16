@@ -34,9 +34,9 @@ export default function AssignedVerificationsPage() {
         <p className="page-description">{user?.role === 'admin' ? `${assigned.length} verification case(s)` : `${assigned.length} cases assigned`}</p>
       </div>
 
-      <div className="mb-6 flex max-w-2xl flex-wrap gap-3">
+      <div className="mb-6 flex flex-col gap-3 sm:max-w-2xl sm:flex-row sm:flex-wrap">
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-64"><SelectValue placeholder="Filter by application type" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="Filter by application type" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Application Types</SelectItem>
             {transferTypes.map(type => (
@@ -45,7 +45,7 @@ export default function AssignedVerificationsPage() {
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-56"><SelectValue placeholder="Filter by status" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-56"><SelectValue placeholder="Filter by status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Statuses</SelectItem>
             {statuses.map(status => (
@@ -61,12 +61,12 @@ export default function AssignedVerificationsPage() {
         ) : assigned.map(app => (
           <Link key={app.id} to={`/survey/verifications/${app.id}`}>
             <Card className="hover:shadow-md transition-shadow">
-              <CardContent className="flex items-center justify-between py-4">
+              <CardContent className="responsive-list-row py-4">
                 <div>
                   <p className="font-semibold">{app.id} — {app.applicantName}</p>
                   <p className="text-sm text-muted-foreground">{app.transferType} • Plot: {app.plotNumber} • {app.district}, {app.upazila}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {app.verificationNotes.some(v => v.isVerified) && <span className="text-xs text-success font-medium">✓ Verified</span>}
                   <StatusBadge status={app.status} />
                 </div>

@@ -73,12 +73,12 @@ export default function AdminDashboard() {
           <CardContent>
             <div className="space-y-2">
               {logs.slice().reverse().slice(0, 8).map(log => (
-                <div key={log.id} className="flex items-center justify-between p-3 rounded-lg border">
-                  <div>
+                <div key={log.id} className="responsive-list-row rounded-lg border p-3">
+                  <div className="min-w-0">
                     <p className="text-sm font-medium">{log.actionType}</p>
                     <p className="text-xs text-muted-foreground">{log.details}</p>
                   </div>
-                  <div className="text-right">
+                  <div className="sm:text-right">
                     <p className="text-xs font-medium">{log.actorName}</p>
                     <p className="text-xs text-muted-foreground">{new Date(log.timestamp).toLocaleString()}</p>
                   </div>

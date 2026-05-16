@@ -111,10 +111,10 @@ export default function LandRecordsManagementPage() {
 
   return (
     <DashboardLayout>
-      <div className="page-header flex items-center justify-between">
+      <div className="page-header flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div><h1 className="page-title">Land Records</h1><p className="page-description">{records.length} records</p></div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button><Plus className="mr-2 h-4 w-4" /> Add Record</Button></DialogTrigger>
+          <DialogTrigger asChild><Button className="w-full sm:w-auto"><Plus className="mr-2 h-4 w-4" /> Add Record</Button></DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>New Land Record</DialogTitle></DialogHeader>
             <div className="space-y-3">
@@ -197,7 +197,7 @@ export default function LandRecordsManagementPage() {
         </Dialog>
       </div>
 
-      <div className="mb-6 max-w-md space-y-2">
+      <div className="mb-6 w-full max-w-md space-y-2">
         <Label>Filter by District</Label>
         <Select value={districtFilter} onValueChange={setDistrictFilter}>
           <SelectTrigger>
@@ -221,15 +221,15 @@ export default function LandRecordsManagementPage() {
           </Card>
         ) : records.map(r => (
           <Card key={r.id}>
-            <CardContent className="flex items-center justify-between py-3">
-              <div>
-                <div className="flex items-center gap-2">
+            <CardContent className="responsive-list-row py-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-medium">{r.id} — {r.ownerName}</p>
                   <Badge variant={r.ownershipStatus === 'Active' ? 'default' : 'secondary'}>{r.ownershipStatus}</Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">Plot: {r.plotNumber} • Holding: {r.holdingNumber} • {r.mouza}, {r.upazila}, {r.district} • {r.landSize}</p>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => handleDelete(r.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+              <Button className="self-start sm:self-center" variant="ghost" size="icon" onClick={() => handleDelete(r.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
             </CardContent>
           </Card>
         ))}

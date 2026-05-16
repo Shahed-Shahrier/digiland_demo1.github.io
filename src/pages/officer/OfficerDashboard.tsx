@@ -36,7 +36,7 @@ export default function OfficerDashboard() {
         <CardContent>
           <div className="space-y-3">
             {recent.map(app => (
-              <Link key={app.id} to={`/officer/applications/${app.id}`} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors">
+              <Link key={app.id} to={`/officer/applications/${app.id}`} className="responsive-list-row rounded-lg border p-3 transition-colors hover:bg-muted/50">
                 <div>
                   <p className="text-sm font-medium">{app.id} — {app.applicantName}</p>
                   <p className="text-xs text-muted-foreground">Plot: {app.plotNumber} • {app.district}</p>
