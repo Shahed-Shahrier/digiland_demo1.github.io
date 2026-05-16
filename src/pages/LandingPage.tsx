@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { ProjectLogo } from '@/components/ProjectLogo';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { FeatureKey, getDashboardPath, getFeaturePath } from '@/lib/featureRoutes';
 import { FileText, Search, Shield, ArrowRight, CheckCircle2, Globe } from 'lucide-react';
 
@@ -24,13 +25,14 @@ export default function LandingPage() {
   return (
     <div className="app-surface min-h-screen">
       {/* Hero */}
-      <header className="border-b border-white/10 bg-primary shadow-lg shadow-primary/20 backdrop-blur-xl">
+      <header className="border-b border-white/10 bg-primary shadow-lg shadow-primary/20 backdrop-blur-xl dark:bg-sidebar">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-2">
             <ProjectLogo className="animate-soft-pulse h-8 w-8 shadow-accent/25" />
             <span className="text-xl font-bold text-white">Digi-Land</span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <ThemeToggle className="text-white hover:bg-white/10 hover:text-white" />
             {isAuthenticated && user ? (
               <Button className="bg-white text-primary shadow-white/20 hover:bg-white/90" asChild>
                 <Link to={dashboardHref}>Dashboard</Link>

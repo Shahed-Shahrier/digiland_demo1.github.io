@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageLoadingScreen } from '@/components/PageLoadingScreen';
 import { ProjectLogo } from '@/components/ProjectLogo';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { getDashboardPath, getFeaturePath, isFeatureKey } from '@/lib/featureRoutes';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -55,6 +56,7 @@ export default function LoginPage() {
   return (
     <div className="app-surface flex min-h-screen items-center justify-center p-4">
       {isSigningIn && <PageLoadingScreen message="Signing in..." overlay />}
+      <ThemeToggle className="fixed right-4 top-4 z-20 bg-card/80 shadow-sm backdrop-blur hover:bg-card" />
       <Card className="w-full max-w-md animate-rise-in">
         <CardHeader className="text-center">
           <ProjectLogo className="animate-soft-pulse mx-auto mb-2 h-10 w-10 shadow-primary/25" />

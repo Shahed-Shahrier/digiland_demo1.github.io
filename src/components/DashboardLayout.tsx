@@ -8,6 +8,7 @@ import { useEffect, useState, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { getDashboardPath } from '@/lib/featureRoutes';
 import { ProjectLogo } from '@/components/ProjectLogo';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const roleNavItems = {
   citizen: [
@@ -109,7 +110,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   if (navMode === 'top') {
     return (
       <div className="app-surface min-h-screen">
-        <header className="sticky top-0 z-40 border-b border-white/10 bg-primary shadow-lg shadow-primary/20 backdrop-blur-xl">
+        <header className="sticky top-0 z-40 border-b border-white/10 bg-primary shadow-lg shadow-primary/20 backdrop-blur-xl dark:bg-sidebar">
           <div className="flex flex-col gap-2 px-3 py-2 sm:px-6 lg:min-h-16 lg:flex-row lg:items-center lg:gap-3 lg:py-0">
             <div className="flex min-h-10 items-center gap-2">
               <Link to={homePath} className="flex shrink-0 items-center gap-2">
@@ -125,6 +126,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                   <Menu className="h-4 w-4 sm:mr-2" />
                   <span className="hidden sm:inline">Side Nav</span>
                 </Button>
+                <ThemeToggle className="text-white hover:bg-white/10 hover:text-white" />
                 <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 hover:text-white" onClick={handleLogout} aria-label="Logout">
                   <LogOut className="h-4 w-4" />
                 </Button>
@@ -186,6 +188,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             Top Nav
           </Button>
           <div className="flex-1" />
+          <ThemeToggle />
           <span className="text-xs text-muted-foreground hidden sm:block">Prototype — Academic Use Only</span>
         </header>
         <main className="animate-rise-in p-4 sm:p-6">
