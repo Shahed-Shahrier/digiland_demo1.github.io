@@ -9,6 +9,7 @@ The project is a static Vite React app designed for GitHub Pages, with Supabase 
 - Role-based dashboards for citizens, land officers, survey officers, and admins
 - Supabase Auth login, registration, and session persistence
 - Protected routes with role-aware navigation
+- Light/dark theme toggle with saved user preference
 - Page loading indicators for login and route transitions
 - Responsive top navigation with optional collapsed side navigation
 - Citizen land search and "My Properties" views based on NID ownership
@@ -33,6 +34,7 @@ The project is a static Vite React app designed for GitHub Pages, with Supabase 
 - shadcn/ui
 - Radix UI
 - Lucide React icons
+- next-themes
 - Recharts
 - Vitest
 - Testing Library

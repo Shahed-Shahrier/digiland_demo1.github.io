@@ -121,6 +121,11 @@
     min-height: 100vh;
   }
 
+  .dark body {
+    background:
+      linear-gradient(135deg, hsl(200 75% 8%) 0%, hsl(202 100% 10%) 38%, hsl(202 100% 16%) 72%, hsl(199 100% 18%) 100%);
+  }
+
   ::selection {
     @apply bg-primary/20 text-foreground;
   }
@@ -134,6 +139,15 @@
       linear-gradient(180deg, hsl(var(--background) / 0.9), hsl(var(--background) / 0.98)),
       repeating-linear-gradient(90deg, hsl(202 65% 84% / 0.34) 0 1px, transparent 1px 82px),
       repeating-linear-gradient(0deg, hsl(202 65% 84% / 0.24) 0 1px, transparent 1px 82px);
+  }
+
+  .dark .app-surface {
+    background:
+      radial-gradient(circle at 12% 10%, hsl(200 100% 49% / 0.18), transparent 30%),
+      radial-gradient(circle at 88% 0%, hsl(202 95% 41% / 0.2), transparent 28%),
+      linear-gradient(180deg, hsl(var(--background) / 0.94), hsl(var(--background) / 0.99)),
+      repeating-linear-gradient(90deg, hsl(200 100% 49% / 0.08) 0 1px, transparent 1px 82px),
+      repeating-linear-gradient(0deg, hsl(200 100% 49% / 0.06) 0 1px, transparent 1px 82px);
   }
 
   .glass-panel {
@@ -175,6 +189,28 @@
   .badge-verified {
     @apply border border-white/70 bg-white/90 text-primary shadow-sm;
   }
+  .dark .badge-pending,
+  .dark .badge-approved,
+  .dark .badge-rejected,
+  .dark .badge-review,
+  .dark .badge-verified {
+    @apply border-primary/25 bg-card/90 shadow-sm;
+  }
+  .dark .badge-pending {
+    @apply text-primary;
+  }
+  .dark .badge-approved {
+    @apply text-success;
+  }
+  .dark .badge-rejected {
+    @apply text-destructive;
+  }
+  .dark .badge-review {
+    @apply text-info;
+  }
+  .dark .badge-verified {
+    @apply text-primary;
+  }
   .stat-card {
     @apply rounded-lg border bg-card/95 p-6 shadow-sm transition-all duration-300 hover:border-primary/35 hover:shadow-md;
     background:
@@ -188,11 +224,17 @@
       linear-gradient(135deg, #051923, #003554 46%, #0582ca 86%, #00a6fb 140%);
     border-color: hsl(200 100% 49% / 0.28);
   }
+  .dark .page-header {
+    background:
+      linear-gradient(135deg, hsl(200 75% 8% / 0.96), hsl(202 100% 16% / 0.94) 48%, hsl(199 100% 29% / 0.78) 120%);
+    border-color: hsl(200 100% 49% / 0.4);
+    box-shadow: 0 18px 42px -30px hsl(200 100% 49% / 0.45);
+  }
   .page-title {
-    @apply text-2xl font-bold tracking-tight text-primary-foreground;
+    @apply text-2xl font-bold tracking-tight text-white;
   }
   .page-description {
-    @apply text-primary-foreground/75;
+    @apply text-sky-100/80;
   }
   .responsive-list-row {
     @apply flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between;
