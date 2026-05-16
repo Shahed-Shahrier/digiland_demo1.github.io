@@ -1,137 +1,112 @@
-# Digi-Land: Digital Land Record and Mutation Portal
+# Digi-Land
 
-Digi-Land is a React + TypeScript web application that simulates a land record and mutation workflow for Bangladesh. It provides role-based dashboards for citizens, land officers, survey officers, and admins, with application tracking, review, verification, notifications, and audit logs.
+Digi-Land is a role-based digital land record and mutation portal prototype for Bangladesh. It lets citizens search land records, view their properties, submit ownership transfer applications, upload required PDF documents, and track application progress. Land officers, survey officers, and admins get separate dashboards for review, verification, user management, land record management, analytics, notifications, and audit history.
 
-## What this project consists of
+The project is a static Vite React app designed for GitHub Pages, with Supabase used for authentication, database access, storage, and row-level security.
 
-### Core app modules
+## Key Features
 
-- Authentication and session context: `src/contexts/AuthContext.tsx`
-- Route setup and role-based protection: `src/App.tsx`, `src/components/ProtectedRoute.tsx`
-- Supabase-backed data service: `src/services/storageService.ts`
-- Supabase browser client: `src/integrations/supabase/client.ts`
-- Supabase type placeholders: `src/integrations/supabase/types.ts`
-- RLS policy draft: `supabase/migrations/0001_digiland_rls_policies_draft.sql`
-- Domain types: `src/types/index.ts`
-- Location hierarchy data (district -> upazila -> mouza): `src/data/locationData.ts`
+- Role-based dashboards for citizens, land officers, survey officers, and admins
+- Supabase Auth login, registration, and session persistence
+- Protected routes with role-aware navigation
+- Page loading indicators for login and route transitions
+- Responsive top navigation with optional collapsed side navigation
+- Citizen land search and "My Properties" views based on NID ownership
+- New application flow for transfer-to-user and transfer-from-user cases
+- Transfer applications linked to both current-owner and proposed-owner NIDs
+- Required PDF document upload and document opening from Supabase Storage
+- Officer review, comments, clarification requests, and survey assignment
+- Survey verification notes and verification status filtering
+- Admin user role filtering, land record management, audit log, and analytics
+- Automatic land ownership transfer after approval
+- Notifications and status timeline for application tracking
 
-### Page groups
+## Tools Used
 
-- Public pages: landing, login, register
-- Citizen pages: dashboard, new application, my applications, application details, land search, notifications, profile
-- Land officer pages: dashboard, all applications, review application, clarifications
-- Survey officer pages: dashboard, assigned verifications, verification details
-- Admin pages: dashboard, users, land records, audit log, analytics
+- React 18
+- TypeScript
+- Vite
+- React Router
+- Supabase Auth, Database, Storage, and RLS policies
+- TanStack React Query
+- Tailwind CSS
+- shadcn/ui
+- Radix UI
+- Lucide React icons
+- Recharts
+- Vitest
+- Testing Library
+- ESLint
+- GitHub Pages
 
-All pages are in `src/pages` and grouped by role (`src/pages/citizen`, `src/pages/officer`, `src/pages/survey`, `src/pages/admin`).
+See exact package versions in `package.json`.
 
-### UI system
+## Project Structure
 
-- shadcn/ui + Radix UI components in `src/components/ui`
-- Shared app components in `src/components` (dashboard layout, status badge, timeline, stat card)
-- Styling: Tailwind CSS with custom tokens in `src/index.css` and `tailwind.config.ts`
+```text
+src/
+  App.tsx                         Route definitions and app providers
+  main.tsx                        React entry point
+  components/                     Shared layout, loading, status, and UI components
+  components/ui/                  shadcn/ui component primitives
+  contexts/AuthContext.tsx        Supabase auth/session/profile handling
+  data/                           Seed and Bangladesh location data
+  integrations/supabase/          Supabase browser client and DB types
+  lib/                            Role and feature-route helpers
+  pages/                          Public and role-specific pages
+  services/storageService.ts      Supabase-backed data and workflow service
+  test/                           Vitest setup and tests
+  types/                          App domain types
 
-## How it works
+supabase/migrations/              Database/RLS/storage migration drafts
+docs/                             Setup and review notes
+public/                           Static icons and public assets
+```
 
-## 1) Startup and routing
+## Roles
 
-Application startup is in `src/main.tsx`, which renders `src/App.tsx`.
+| UI role | Database role mapping | Main access |
+| --- | --- | --- |
+| `citizen` | `applicant` or `citizen` | Citizen dashboard, applications, properties, land search, notifications, profile |
+| `land_officer` | `reviewer` or `land_officer` | Officer dashboard, application review, clarifications |
+| `survey_officer` | `survey_officer` | Survey dashboard, assigned verifications |
+| `admin` | `admin` or `super_admin` | Admin dashboard, users, land records, audit log, analytics, plus officer/survey pages |
 
-`src/App.tsx` wires these providers:
+Public registration creates citizen/applicant accounts. Privileged roles should be assigned only through an admin-controlled flow or reviewed SQL.
 
-- `QueryClientProvider` (TanStack React Query)
-- `TooltipProvider`
-- `Toaster` and `Sonner` for notifications
-- `AuthProvider`
-- `HashRouter` for GitHub Pages compatibility
+## Routes
 
-Routes are public or protected. Protected routes are wrapped with `ProtectedRoute` and allow only specific roles.
-
-## 2) Authentication model
-
-`AuthProvider` handles:
-
-- Login with Supabase Auth email/password
-- Registration with Supabase Auth sign-up
-- Session persistence through Supabase Auth
-- Audit log entries for login/register/logout actions
-
-Important: UI roles are hints only. Real authorization must be enforced by Supabase RLS policies.
-Public registration always creates an applicant/citizen profile. Admin, reviewer/land officer, and survey officer roles must be assigned by an admin or by reviewed SQL, never by the public registration form.
-
-## 3) Data model and persistence
-
-This project is hosted as a static GitHub Pages app. The backend is Supabase, accessed directly from the browser with the public Supabase URL and publishable key, or legacy anon key.
-
-Supabase tables used by `storageService.ts`:
-
-- `users`, `roles`, `user_roles`
-- `land_parcels`
-- `applications`, `application_new_owners`, `application_status_history`
-- `documents`, `reviews`, `verifications`
-- `notifications`, `audit_logs`
-
-The service keeps an in-memory cache after initial load because the current UI reads data synchronously in many pages. Runtime data is not backed by `localStorage`.
-
-## 4) End-to-end workflow
-
-### Citizen flow
-
-1. Register or log in.
-2. Create a mutation application (multi-step form with land and transfer details).
-3. Track status timeline and review/verification updates.
-4. View notifications and personal profile.
-
-### Land officer flow
-
-1. View all submitted applications.
-2. Review details and leave comments.
-3. Request clarification, assign survey officer, and update status.
-
-### Survey officer flow
-
-1. View assigned verifications.
-2. Inspect application details.
-3. Add verification findings and mark verification outcome.
-
-### Admin flow
-
-1. Monitor system-wide metrics and charts.
-2. Manage users and land records.
-3. Review audit logs and analytics.
-
-## Routes overview
-
-### Public
+Public:
 
 - `/`
 - `/login`
 - `/register`
 
-### Citizen
+Citizen:
 
 - `/citizen`
 - `/citizen/new-application`
 - `/citizen/applications`
 - `/citizen/applications/:id`
+- `/citizen/properties`
 - `/citizen/land-search`
 - `/citizen/notifications`
 - `/citizen/profile`
 
-### Land officer
+Land officer:
 
 - `/officer`
 - `/officer/applications`
 - `/officer/applications/:id`
 - `/officer/clarifications`
 
-### Survey officer
+Survey officer:
 
 - `/survey`
 - `/survey/verifications`
 - `/survey/verifications/:id`
 
-### Admin
+Admin:
 
 - `/admin`
 - `/admin/users`
@@ -139,26 +114,65 @@ The service keeps an in-memory cache after initial load because the current UI r
 - `/admin/audit-log`
 - `/admin/analytics`
 
-## Tech stack
+## Workflow Overview
 
-- React 18 + TypeScript
-- Vite
-- React Router v6
-- Tailwind CSS
-- shadcn/ui + Radix UI
-- React Hook Form + Zod
-- TanStack React Query
-- Supabase JavaScript client
-- Recharts
-- Vitest + Testing Library
+### Citizen
 
-See exact dependency versions in `package.json`.
+1. Register or log in with Supabase Auth.
+2. Use land search or "My Properties" to find land records.
+3. Start a new transfer application.
+4. Choose transfer direction:
+   - Transfer to user: search the current owner NID, choose a matching property, and set the logged-in user's NID as the proposed new owner.
+   - Transfer from user: choose from properties currently listed under the logged-in user's NID.
+5. Upload required PDFs: Land Deed, National ID, and Tax Receipt.
+6. Track status, comments, clarifications, verification notes, and notifications.
 
-## Local development
+### Land Officer
 
-Prerequisites:
+1. Review submitted applications.
+2. Filter applications by status and transfer type.
+3. Open uploaded PDFs.
+4. Add review comments.
+5. Request clarification from a citizen.
+6. Assign or reassign a survey officer.
+7. Approve, reject, or update application status.
 
-- Node.js 18+ (or Bun runtime)
+### Survey Officer
+
+1. View assigned verification cases.
+2. Filter by transfer type and status.
+3. Open application details and uploaded PDFs.
+4. Add verification findings.
+5. Mark a case verified or rejected.
+
+### Admin
+
+1. View platform metrics and analytics.
+2. Manage users and filter users by role.
+3. Manage land records and filter by district.
+4. Review audit logs.
+5. Access officer and survey workflows.
+
+## Supabase Data Areas
+
+The frontend service uses these Supabase areas:
+
+- Auth users and session state
+- `users`, `roles`, and `user_roles`
+- `land_parcels` and `land_owners`
+- `applications` and `application_new_owners`
+- `application_status_history`
+- `documents`
+- `reviews`
+- `clarifications`
+- `verifications`
+- `notifications`
+- `audit_logs`
+- Storage bucket for application PDFs
+
+The app keeps an in-memory cache after loading data so existing pages can read synchronously. Data is not stored in browser `localStorage`.
+
+## Local Development
 
 Install dependencies:
 
@@ -166,138 +180,123 @@ Install dependencies:
 npm install
 ```
 
-Create a local `.env.local` file:
+Create local environment values:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Fill in the Supabase values:
+Set the Supabase values in `.env.local`:
 
-```bash
-VITE_SUPABASE_URL=https://ozrbinmqhtbpqoehotjc.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
-# or legacy fallback:
-# VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```env
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+# Legacy fallback if needed:
+# VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-Set up Supabase:
-
-1. Review `supabase/migrations/0001_digiland_rls_policies_draft.sql`.
-2. Confirm `public.users.auth_user_id uuid references auth.users(id)` exists.
-3. Apply reviewed RLS policies in Supabase SQL Editor.
-4. Use Project Settings > API to copy the Project URL and publishable key, or legacy anon key.
-5. Verify policies with:
-
-```sql
-select * from pg_policies where schemaname = 'public';
-```
-
-Run the Vite dev server:
+Run the development server:
 
 ```bash
 npm run dev
 ```
 
-Build production bundle:
+The Vite dev server is configured for port `8080`.
+
+Build for production:
 
 ```bash
 npm run build
 ```
 
-Preview production build locally:
+Preview the production build:
 
 ```bash
 npm run preview
-```
-
-Lint:
-
-```bash
-npm run lint
 ```
 
 Run tests:
 
 ```bash
 npm run test
-npm run test:watch
 ```
 
-Equivalent Bun commands also work (`bun install`, `bun run dev`, etc.).
+Run lint:
 
-## Demo accounts
+```bash
+npm run lint
+```
 
-Demo buttons fill the email field only. Passwords are not stored in source code.
+## Supabase Setup
 
-Create matching Supabase Auth users manually, then link each Auth UUID to `public.users.auth_user_id`:
+Review the setup notes in `docs/supabase-setup.md` and the migration drafts in `supabase/migrations/`.
 
-- `shahed.admin@digiland.demo` -> `super_admin`; set Shahed's Auth password manually to `Shahedadmin`
-- `farhana.akter@digiland.demo` -> `admin`
-- `rahim.uddin@digiland.demo` -> `survey_officer`
-- `sadia.islam@digiland.demo` -> `reviewer` (shown in the UI as land officer)
-- `nusrat.jahan@digiland.demo` -> `applicant` (shown in the UI as citizen)
-- `abdul.karim@digiland.demo` -> `applicant` (shown in the UI as citizen)
+At minimum, verify:
 
-Example linking SQL after creating Auth users:
+- Supabase Auth is enabled for email/password login.
+- `public.users.auth_user_id` links app profiles to `auth.users.id`.
+- Required tables and relationships exist.
+- RLS policies are reviewed before production use.
+- The PDF storage bucket exists and has appropriate policies.
+- GitHub Pages and localhost URLs are allowed in Supabase Auth redirect settings.
+
+Useful policy check:
 
 ```sql
-update public.users
-set auth_user_id = '<auth.users.id>'
-where email = 'shahed.admin@digiland.demo';
+select * from pg_policies where schemaname = 'public';
 ```
 
-Do not put demo passwords in `public.users.password_hash`; authentication uses Supabase Auth only.
+## Security Notes
 
-## Security notes
+- Do not commit `.env`, `.env.local`, service role keys, database passwords, or admin API secrets.
+- Vite environment variables are public in the browser. Only use Supabase publishable or anon keys there.
+- Real authorization must be enforced by Supabase RLS, not only by frontend route guards.
+- Public registration should remain limited to citizen/applicant accounts.
+- Audit logs written from the browser are useful for demo visibility but should move to trusted server-side logic for production.
+- Review storage policies so users can only upload and open documents they are allowed to access.
 
-- Never expose a service role key, database password, or admin API secret in Vite or GitHub Pages.
-- Public registration creates only applicant/citizen accounts.
-- Admin/officer role assignment is manual SQL for this demo unless an admin-only role management flow is added later.
-- Browser audit-log inserts are demo-only and are not trustworthy for production.
-- Document upload currently stores metadata only; Supabase Storage upload and storage policies are not implemented yet.
+## Testing Status
 
-## Testing status
+Vitest is configured with jsdom setup in `src/test/setup.ts`.
 
-Vitest is configured (`vitest.config.ts`) with setup in `src/test/setup.ts`.
-Current test coverage is minimal (placeholder example test in `src/test/example.test.ts`).
+Current tests cover:
 
-## Deployment notes (GitHub Pages)
+- Basic app test setup
+- Location hierarchy data
+- Role mapping helpers
 
-This is a Vite SPA deployed by `.github/workflows/deploy-pages.yml`.
+Run the full check before pushing:
 
-Before deployment:
+```bash
+npm run build
+npm run test
+npm run lint
+```
 
-1. Review and apply `supabase/migrations/0001_digiland_rls_policies_draft.sql` in Supabase.
-2. Add these GitHub repository secrets:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_PUBLISHABLE_KEY` preferred, or `VITE_SUPABASE_ANON_KEY`
-3. Push to `main` or run the workflow manually.
+## Deployment
 
-The workflow sets `VITE_BASE_PATH` for the repository pages path and uploads `dist/` to GitHub Pages.
+This app is intended for GitHub Pages deployment as a Vite single-page app.
 
-For GitHub Pages deployment, verify:
+Deployment notes:
 
-1. Vite `base` path in `vite.config.ts` if deploying to a project subpath.
-2. The app continues to use `HashRouter` unless you add a custom SPA fallback.
-3. Build output from `dist/` is what gets deployed.
+- `HashRouter` is used for GitHub Pages compatibility.
+- `vite.config.ts` sets a production base path from `VITE_BASE_PATH` or the repository path.
+- Public assets live in `public/`.
+- Supabase values for deployment should be configured as repository secrets or build environment variables.
+- `.env.local` is only for local development and should not be pushed.
 
-Supabase Auth redirect URLs to configure:
+Suggested deployment environment variables:
 
-- `http://localhost:5173`
-- `http://localhost:5173/*`
-- `https://shahrier.tech`
-- `https://shahrier.tech/*`
-- `https://shahrier.tech/digiland_demo1.github.io`
-- `https://shahrier.tech/digiland_demo1.github.io/*`
-- `https://shahed-shahrier.github.io/digiland_demo1.github.io`
-- `https://shahed-shahrier.github.io/digiland_demo1.github.io/*`
+```env
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+VITE_BASE_PATH=/digiland_demo1.github.io/
+```
 
-## Current limitations
+## Current Limitations
 
-- RLS policies are a draft and must be reviewed before production
-- Some enum values and ownership joins need live-schema verification
-- Audit inserts from the browser are temporary and should move to DB triggers/RPC/server-side code
-- File upload storage is not implemented; the app inserts document metadata only
-
-Use this codebase as a prototype/demo foundation, not a production-ready secured system.
+- This is a prototype/demo and not a production-ready government system.
+- RLS policies and schema assumptions must be reviewed against the live Supabase project before production.
+- Browser-driven audit logging is not tamper-proof.
+- Some pages use synchronous reads from an in-memory cache after initial Supabase loading.
+- Test coverage is still light and should be expanded around workflows, permissions, document access, and approval-side ownership transfer.
