@@ -224,11 +224,17 @@
       linear-gradient(135deg, #051923, #003554 46%, #0582ca 86%, #00a6fb 140%);
     border-color: hsl(200 100% 49% / 0.28);
   }
+  .dark .page-header {
+    background:
+      linear-gradient(135deg, hsl(200 75% 8% / 0.96), hsl(202 100% 16% / 0.94) 48%, hsl(199 100% 29% / 0.78) 120%);
+    border-color: hsl(200 100% 49% / 0.4);
+    box-shadow: 0 18px 42px -30px hsl(200 100% 49% / 0.45);
+  }
   .page-title {
-    @apply text-2xl font-bold tracking-tight text-primary-foreground;
+    @apply text-2xl font-bold tracking-tight text-white;
   }
   .page-description {
-    @apply text-primary-foreground/75;
+    @apply text-sky-100/80;
   }
   .responsive-list-row {
     @apply flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between;
