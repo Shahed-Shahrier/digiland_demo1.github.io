@@ -1,4 +1,5 @@
-import { Loader2, MapPin } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import { ProjectLogo } from '@/components/ProjectLogo';
 
 type PageLoadingScreenProps = {
   message?: string;
@@ -13,8 +14,8 @@ export function PageLoadingScreen({ message = 'Loading...', overlay = false }: P
   return (
     <div className={wrapperClass} role="status" aria-live="polite" aria-label={message}>
       <div className="flex min-w-56 flex-col items-center gap-4 rounded-lg border bg-card px-8 py-7 text-card-foreground shadow-lg">
-        <div className="relative flex h-14 w-14 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <MapPin className="h-6 w-6" aria-hidden="true" />
+        <div className="relative">
+          <ProjectLogo className="h-14 w-14" />
           <Loader2 className="absolute -right-2 -top-2 h-5 w-5 animate-spin rounded-full bg-card p-0.5 text-primary" aria-hidden="true" />
         </div>
         <p className="text-sm font-medium text-muted-foreground">{message}</p>

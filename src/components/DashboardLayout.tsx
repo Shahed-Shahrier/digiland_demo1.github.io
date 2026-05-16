@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { getNotificationsForUser } from '@/services/storageService';
 import { useEffect, useState, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { getDashboardPath } from '@/lib/featureRoutes';
+import { ProjectLogo } from '@/components/ProjectLogo';
 
 const roleNavItems = {
   citizen: [
@@ -48,7 +50,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
     if (typeof window === 'undefined') return 'top';
     return window.localStorage.getItem('digiland-nav-mode') === 'side' ? 'side' : 'top';
   });
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     window.localStorage.setItem('digiland-nav-mode', navMode);
@@ -56,6 +58,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 
   if (!user) return null;
   const navItems = roleNavItems[user.role];
+  const homePath = getDashboardPath(user.role);
   const unreadCount = getNotificationsForUser(user.id).filter(n => !n.read).length;
 
   const handleLogout = async () => {
@@ -82,11 +85,11 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
         key={item.path}
         to={item.path}
         className={cn(
-          "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+          "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
           mode === 'top'
             ? active
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              ? "bg-accent text-accent-foreground shadow-sm"
+              : "text-white/70 hover:bg-white/10 hover:text-white"
             : active
               ? "bg-sidebar-accent text-sidebar-accent-foreground"
               : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
@@ -105,14 +108,12 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 
   if (navMode === 'top') {
     return (
-      <div className="min-h-screen bg-background">
-        <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
+      <div className="app-surface min-h-screen">
+        <header className="sticky top-0 z-40 border-b border-white/10 bg-primary shadow-lg shadow-primary/20 backdrop-blur-xl">
           <div className="flex min-h-16 items-center gap-3 px-4 sm:px-6">
-            <Link to="/" className="flex shrink-0 items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <MapPin className="h-4 w-4 text-primary-foreground" />
-              </div>
-              <span className="font-bold text-lg">Digi-Land</span>
+            <Link to={homePath} className="flex shrink-0 items-center gap-2">
+              <ProjectLogo className="animate-soft-pulse h-8 w-8 shadow-accent/25" />
+              <span className="font-bold text-lg text-white">Digi-Land</span>
             </Link>
 
             <nav className="flex flex-1 items-center gap-1 overflow-x-auto px-2">
@@ -120,19 +121,19 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             </nav>
 
             <div className="hidden shrink-0 text-right sm:block">
-              <p className="max-w-36 truncate text-sm font-medium">{user.name}</p>
-              <p className="text-xs text-muted-foreground">{roleLabel}</p>
+              <p className="max-w-36 truncate text-sm font-medium text-white">{user.name}</p>
+              <p className="text-xs text-white/55">{roleLabel}</p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setNavMode('side')}>
+            <Button variant="outline" size="sm" className="bg-white/95 text-primary hover:bg-white hover:text-primary" onClick={() => setNavMode('side')}>
               <Menu className="mr-2 h-4 w-4" />
               Side Nav
             </Button>
-            <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Logout">
+            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 hover:text-white" onClick={handleLogout} aria-label="Logout">
               <LogOut className="h-4 w-4" />
             </Button>
           </div>
         </header>
-        <main className="p-4 animate-fade-in sm:p-6">
+        <main className="animate-rise-in p-4 sm:p-6">
           {children}
         </main>
       </div>
@@ -140,16 +141,14 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="app-surface min-h-screen flex">
       {/* Sidebar */}
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 flex flex-col border-r bg-sidebar text-sidebar-foreground transition-all duration-300",
+        "fixed inset-y-0 left-0 z-50 flex flex-col border-r bg-sidebar/95 text-sidebar-foreground shadow-xl backdrop-blur transition-all duration-300",
         sidebarOpen ? "w-64" : "w-16"
       )}>
         <div className="flex h-16 items-center gap-2 border-b border-sidebar-border px-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary">
-            <MapPin className="h-4 w-4 text-sidebar-primary-foreground" />
-          </div>
+          <ProjectLogo className="animate-soft-pulse h-8 w-8" />
           {sidebarOpen && <span className="font-bold text-lg">Digi-Land</span>}
         </div>
 
@@ -176,7 +175,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 
       {/* Main */}
       <div className={cn("flex-1 transition-all duration-300", sidebarOpen ? "ml-64" : "ml-16")}>
-        <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background/95 backdrop-blur px-6">
+        <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background/80 px-6 shadow-sm backdrop-blur-xl">
           <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(!sidebarOpen)}>
             <Menu className="h-5 w-5" />
           </Button>
@@ -186,7 +185,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           <div className="flex-1" />
           <span className="text-xs text-muted-foreground hidden sm:block">Prototype — Academic Use Only</span>
         </header>
-        <main className="p-6 animate-fade-in">
+        <main className="animate-rise-in p-6">
           {children}
         </main>
       </div>
